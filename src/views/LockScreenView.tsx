@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLockScreenTelemetry } from '../hooks/useLockScreenTelemetry'
 import {
   calculateExpectedPin,
-  defaultPlacementForComplexity,
+  defaultPositionsForComplexity,
   inferAlgorithmType,
   ResolvedConfiguration,
 } from '../lib/pinComposer'
@@ -125,8 +125,8 @@ export function LockScreenView() {
       : undefined
     return {
       algorithmType: inferAlgorithmType(algorithm, complexity),
-      placement:
-        config?.placement ?? defaultPlacementForComplexity(complexity),
+      dynamicPositions:
+        config?.dynamicPositions ?? defaultPositionsForComplexity(complexity),
     }
   }, [currentCondition, configurations, algorithmsByComplexity])
 

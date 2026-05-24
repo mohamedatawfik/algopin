@@ -27,11 +27,11 @@ const STAGE_DESCRIPTIONS: Partial<Record<StudyStage, string>> = {
   ALGO_INTRO:
     'You will now learn about algorithmic PINs. Each upcoming condition will combine your base PIN with a small rule that depends on something visible on the lock screen.',
   LOW_SETUP:
-    'Pick a low-complexity rule and choose where the rule digit should be placed relative to your base PIN.',
+    'Pick a low-complexity rule and tap which 1–3 digits of your base PIN should be replaced by it.',
   MED_SETUP:
-    'Pick a medium-complexity rule and choose its placement relative to your base PIN.',
+    'Pick a medium-complexity rule and tap which 1–3 digits of your base PIN should be replaced by it.',
   HIGH_SETUP:
-    'Pick a high-complexity rule and choose its placement relative to your base PIN.',
+    'Pick a high-complexity rule and tap which 1–3 digits of your base PIN should be replaced by it.',
 }
 
 export type StagePlaceholderViewProps = {

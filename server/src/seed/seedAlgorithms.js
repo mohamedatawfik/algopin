@@ -9,21 +9,21 @@ const ALGORITHMS = [
     complexity: 'Low',
     type: 'MINUTE_DIGIT',
     description:
-      'Append the units digit of the current minute to the base PIN.',
+      'Replace each chosen position of the base PIN with the units digit of the current minute.',
   },
   {
     algorithmId: 'medium-unread-messages',
     complexity: 'Medium',
     type: 'UNREAD_MESSAGES',
     description:
-      'Append the units digit of the simulated unread messages count to the base PIN.',
+      'Replace each chosen position of the base PIN with the units digit of the simulated unread messages count.',
   },
   {
     algorithmId: 'high-time-cross-sum',
     complexity: 'High',
     type: 'TIME_CROSS_SUM',
     description:
-      'Insert the cross-sum of the current time digits (HH+MM) between the first and second digits of the base PIN.',
+      'Replace each chosen position of the base PIN with the units digit of the cross-sum of the current time (HH+MM).',
   },
 ]
 

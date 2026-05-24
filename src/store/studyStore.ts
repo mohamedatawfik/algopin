@@ -16,15 +16,16 @@ export type { StudyStage } from '../lib/stageFlow'
 
 export type PinCondition = 'Baseline' | 'Low' | 'Medium' | 'High'
 
-export type Placement =
-  | 'PREPEND'
-  | 'APPEND'
-  | 'INSERT_INDEX_1'
-  | 'INSERT_INDEX_2'
+/**
+ * Indices (0-based) of the base PIN digits that are replaced by the
+ * algorithm's dynamic value. Length is constrained to 1..3 by
+ * `pinComposer.MIN_DYNAMIC_POSITIONS` / `MAX_DYNAMIC_POSITIONS`.
+ */
+export type DynamicPositions = number[]
 
 export type AlgorithmConfiguration = {
   algorithmId: string
-  placement: Placement
+  dynamicPositions: DynamicPositions
 }
 
 export type Configurations = {

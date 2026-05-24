@@ -29,9 +29,9 @@ export function SurveyView() {
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Placeholder: replace this section with your NASA-TLX implementation
-          or external survey link. Telemetry for this session is stored in the app
-          state for export.
+          Placeholder: Here will come later the NASA-TLX study questionaire
+          at the end of the study I will provide a Survey Link that will be entered by
+          participantsin MTurk to validate the went through the survey and finished it.
         </Typography>
       </Box>
       <Button variant="outlined" fullWidth onClick={handlePlaceholderDone}>

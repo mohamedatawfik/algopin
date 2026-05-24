@@ -2,6 +2,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Card,
   CardContent,
   Chip,
@@ -10,28 +11,27 @@ import {
   FormControlLabel,
   FormHelperText,
   FormLabel,
-  InputLabel,
-  MenuItem,
   Radio,
   RadioGroup,
-  Select,
-  SelectChangeEvent,
   Stack,
   Typography,
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import {
+  BASE_PIN_LENGTH,
   computeDynamicValue,
   decomposePreview,
+  defaultPositionsForComplexity,
   inferAlgorithmType,
+  MAX_DYNAMIC_POSITIONS,
+  MIN_DYNAMIC_POSITIONS,
   placeholderDescriptionForType,
   placeholderForType,
-  PLACEMENT_OPTIONS,
 } from '../lib/pinComposer'
 import { AlgorithmComplexity } from '../lib/stageFlow'
 import {
   configKeyForComplexity,
-  Placement,
+  DynamicPositions,
   useStudyStore,
 } from '../store/studyStore'
 import type { PredefinedAlgorithm } from '../lib/api'
@@ -75,9 +75,14 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   const [selectedAlgorithmId, setSelectedAlgorithmId] = useState<string>(
     existingConfig?.algorithmId ?? cached[0]?.algorithmId ?? ''
   )
-  const [placement, setPlacement] = useState<Placement>(
-    existingConfig?.placement ?? 'APPEND'
-  )
+
+  const [positions, setPositions] = useState<DynamicPositions>(() => {
+    const seed =
+      existingConfig?.dynamicPositions ??
+      defaultPositionsForComplexity(complexity)
+    return [...seed].sort((a, b) => a - b).slice(0, MAX_DYNAMIC_POSITIONS)
+  })
+
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -150,12 +155,12 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
 
   const ruleSegments = useMemo(
     () =>
-      decomposePreview(basePin, placeholderForType(algorithmType), placement),
-    [basePin, algorithmType, placement]
+      decomposePreview(basePin, placeholderForType(algorithmType), positions),
+    [basePin, algorithmType, positions]
   )
   const liveSegments = useMemo(
-    () => decomposePreview(basePin, dynamicValue, placement),
-    [basePin, dynamicValue, placement]
+    () => decomposePreview(basePin, dynamicValue, positions),
+    [basePin, dynamicValue, positions]
   )
 
   const handleAlgorithmChange = (id: string) => {
@@ -166,12 +171,23 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
     })
   }
 
-  const handlePlacementChange = (e: SelectChangeEvent<Placement>) => {
-    const v = e.target.value as Placement
-    setPlacement(v)
-    appendTelemetry('algorithm_setup_placement_change', {
-      complexity,
-      placement: v,
+  const togglePosition = (idx: number) => {
+    setPositions((prev) => {
+      const isSelected = prev.includes(idx)
+      let next: number[]
+      if (isSelected) {
+        if (prev.length <= MIN_DYNAMIC_POSITIONS) return prev
+        next = prev.filter((p) => p !== idx)
+      } else {
+        if (prev.length >= MAX_DYNAMIC_POSITIONS) return prev
+        next = [...prev, idx]
+      }
+      next.sort((a, b) => a - b)
+      appendTelemetry('algorithm_setup_position_toggle', {
+        complexity,
+        positions: next,
+      })
+      return next
     })
   }
 
@@ -193,18 +209,27 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
     }
   }
 
-  const canSubmit = Boolean(selectedAlgorithmId) && !loading && !loadError
+  const positionsValid =
+    positions.length >= MIN_DYNAMIC_POSITIONS &&
+    positions.length <= MAX_DYNAMIC_POSITIONS
+
+  const canSubmit =
+    Boolean(selectedAlgorithmId) &&
+    !loading &&
+    !loadError &&
+    positionsValid &&
+    basePin.length === BASE_PIN_LENGTH
 
   const handleSubmit = () => {
     if (!canSubmit) return
     setConfiguration(configKey, {
       algorithmId: selectedAlgorithmId,
-      placement,
+      dynamicPositions: positions,
     })
     appendTelemetry('algorithm_setup_submit', {
       complexity,
       algorithmId: selectedAlgorithmId,
-      placement,
+      dynamicPositions: positions,
     })
     advanceStage()
   }
@@ -234,9 +259,9 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
         Configure your {COMPLEXITY_LABELS[complexity].toLowerCase()} rule
       </Typography>
       <Typography variant="body1" color="text.secondary">
-        Pick the dynamic element you want to use, then choose where it should
-        sit relative to your base PIN. The preview shows what you will type to
-        unlock.
+        Pick the dynamic element you want to use, then tap the digits of
+        your base PIN that should be replaced by it. The PIN length stays
+        at {BASE_PIN_LENGTH} digits — nothing is appended or prepended.
       </Typography>
 
       <Card variant="outlined" sx={{ borderRadius: 3 }}>
@@ -319,25 +344,36 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
 
       <Card variant="outlined" sx={{ borderRadius: 3 }}>
         <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
-          <FormControl fullWidth>
-            <InputLabel id="placement-select-label">
-              Where should the dynamic element go?
-            </InputLabel>
-            <Select<Placement>
-              labelId="placement-select-label"
-              label="Where should the dynamic element go?"
-              value={placement}
-              onChange={handlePlacementChange}
+          <FormControl
+            component="fieldset"
+            fullWidth
+            disabled={basePin.length !== BASE_PIN_LENGTH}
+          >
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              sx={{ mb: 1.25 }}
             >
-              {PLACEMENT_OPTIONS.map((opt) => (
-                <MenuItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </MenuItem>
-              ))}
-            </Select>
+              <FormLabel sx={{ fontWeight: 600 }}>
+                Tap the digits that should be dynamic
+              </FormLabel>
+              <Chip
+                label={`${positions.length} of ${BASE_PIN_LENGTH} dynamic`}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+            </Stack>
+            <PositionPicker
+              basePin={basePin}
+              selected={positions}
+              onToggle={togglePosition}
+            />
             <FormHelperText>
-              The dynamic element ({placeholderDescriptionForType(algorithmType)})
-              is highlighted in the preview below.
+              Pick {MIN_DYNAMIC_POSITIONS}–{MAX_DYNAMIC_POSITIONS} positions.
+              Each selected digit is replaced by{' '}
+              {placeholderDescriptionForType(algorithmType)} when you unlock.
             </FormHelperText>
           </FormControl>
         </CardContent>
@@ -398,6 +434,79 @@ function algorithmShortLabel(
     default:
       return 'Algorithm'
   }
+}
+
+function PositionPicker({
+  basePin,
+  selected,
+  onToggle,
+}: {
+  basePin: string
+  selected: number[]
+  onToggle: (idx: number) => void
+}) {
+  const slots = Array.from({ length: BASE_PIN_LENGTH }, (_, i) =>
+    basePin[i] ?? '–'
+  )
+  return (
+    <Stack direction="row" spacing={1.25} sx={{ flexWrap: 'wrap' }}>
+      {slots.map((digit, idx) => {
+        const isSelected = selected.includes(idx)
+        const atMax =
+          !isSelected && selected.length >= MAX_DYNAMIC_POSITIONS
+        const atMin =
+          isSelected && selected.length <= MIN_DYNAMIC_POSITIONS
+        const disabled = atMax || atMin
+        return (
+          <Stack key={idx} alignItems="center" spacing={0.5}>
+            <ButtonBase
+              onClick={() => onToggle(idx)}
+              focusRipple
+              disabled={disabled}
+              aria-pressed={isSelected}
+              aria-label={`Position ${idx + 1}: ${
+                isSelected ? 'dynamic' : 'static'
+              }`}
+              sx={{
+                width: 56,
+                height: 64,
+                borderRadius: 2,
+                border: '2px solid',
+                borderColor: isSelected
+                  ? 'rgba(100,181,246,0.85)'
+                  : 'divider',
+                bgcolor: isSelected
+                  ? 'rgba(100,181,246,0.18)'
+                  : 'action.hover',
+                color: isSelected ? '#64b5f6' : 'text.primary',
+                fontWeight: 600,
+                fontSize: 24,
+                fontVariantNumeric: 'tabular-nums',
+                transition:
+                  'background-color 120ms ease, border-color 120ms ease, transform 120ms ease',
+                '&:hover': {
+                  bgcolor: isSelected
+                    ? 'rgba(100,181,246,0.26)'
+                    : 'action.selected',
+                },
+                '&:active': { transform: 'scale(0.97)' },
+                '&.Mui-disabled': { opacity: 0.55 },
+              }}
+            >
+              {digit}
+            </ButtonBase>
+            <Typography
+              variant="caption"
+              color={isSelected ? 'primary.main' : 'text.secondary'}
+              sx={{ fontWeight: isSelected ? 600 : 400 }}
+            >
+              #{idx + 1}
+            </Typography>
+          </Stack>
+        )
+      })}
+    </Stack>
+  )
 }
 
 function PreviewRow({

@@ -12,6 +12,7 @@ import {
 import {
   AlgorithmComplexity,
   conditionForStage,
+  isTlxStage,
   nextStage,
   StudyStage,
 } from '../lib/stageFlow'
@@ -76,6 +77,16 @@ type StudyState = {
    */
   tempTelemetry: LockScreenMetrics | null
   /**
+   * Count of "Return" presses on the lock screen during the *current*
+   * complexity phase. Incremented from `LockScreenView` and surfaced as
+   * `returnCount` on the telemetry payload at unlock-success time. The
+   * counter persists across the SETUP ↔ TEST bounce within a phase (e.g.
+   * LOW_TEST → LOW_SETUP → LOW_TEST keeps accumulating) and only resets to
+   * zero when the participant finishes the matching `*_TLX` survey and the
+   * stage advances to the next phase (see `advanceStage`).
+   */
+  currentPhaseReturnCount: number
+  /**
    * The participant's answers to the 10 standard System Usability Scale
    * items, captured at the end of Phase 1 (and again at Phase 2 if/when a
    * Day-7 follow-up is added). Each value is an integer 1..5.
@@ -104,6 +115,12 @@ type StudyState = {
   appendTelemetry: (event: string, payload?: Record<string, unknown>) => void
   setTempTelemetry: (metrics: LockScreenMetrics | null) => void
   clearTempTelemetry: () => void
+  /**
+   * Increment `currentPhaseReturnCount` by one. Called by `LockScreenView`
+   * right before bouncing the participant back to the matching `*_SETUP`
+   * stage so we can count working-memory failures per phase.
+   */
+  incrementCurrentPhaseReturnCount: () => void
   setSusAnswers: (answers: SusAnswers | null) => void
   resetStudySession: () => void
 
@@ -160,6 +177,7 @@ const initialState = {
   algorithmsByComplexity: {} as AlgorithmsCache,
   telemetry: [] as TelemetryEntry[],
   tempTelemetry: null as LockScreenMetrics | null,
+  currentPhaseReturnCount: 0,
   susAnswers: null as SusAnswers | null,
   phase1FinalizedAt: null as string | null,
   consentAccepted: false,
@@ -184,12 +202,23 @@ export const useStudyStore = create<StudyState>((set, get) => ({
     }),
 
   advanceStage: () => {
-    const next = nextStage(get().currentStage)
+    const current = get().currentStage
+    const next = nextStage(current)
     if (!next) return null
-    set({
+    const updates: Partial<StudyState> = {
       currentStage: next,
       currentCondition: conditionForStage(next) ?? get().currentCondition,
-    })
+    }
+    // Only reset the return counter when the participant finishes a TLX
+    // survey and crosses into a brand-new phase. Bouncing between *_SETUP
+    // and *_TEST via the lock-screen "Return" button uses setStage(), which
+    // intentionally leaves this counter untouched so a single phase's
+    // working-memory failures accumulate across multiple back-and-forth
+    // trips.
+    if (isTlxStage(current)) {
+      updates.currentPhaseReturnCount = 0
+    }
+    set(updates)
     return next
   },
 
@@ -217,6 +246,9 @@ export const useStudyStore = create<StudyState>((set, get) => ({
 
   clearTempTelemetry: () => set({ tempTelemetry: null }),
 
+  incrementCurrentPhaseReturnCount: () =>
+    set({ currentPhaseReturnCount: get().currentPhaseReturnCount + 1 }),
+
   setSusAnswers: (answers) => set({ susAnswers: answers }),
 
   resetStudySession: () =>
@@ -226,6 +258,7 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       algorithmsByComplexity: {},
       telemetry: [],
       tempTelemetry: null,
+      currentPhaseReturnCount: 0,
       susAnswers: null,
       phase1FinalizedAt: null,
       lastFinalizeError: null,

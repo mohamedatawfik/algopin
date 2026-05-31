@@ -66,6 +66,13 @@ export type TelemetrySubmission = {
   timeToFirstTouch: number | null
   totalAuthTime: number
   errorCount: number
+  /**
+   * Count of lock-screen "Return" presses accumulated across the current
+   * complexity phase, captured at unlock-success time. Persisted on the
+   * `TelemetryLog` document so we can analyse working-memory failures
+   * per condition.
+   */
+  returnCount: number
   submittedErrors: string[]
   keystrokeLog: Keystroke[]
   nasaTlx: NasaTlxRatings

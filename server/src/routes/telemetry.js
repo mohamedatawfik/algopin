@@ -74,6 +74,10 @@ router.post('/', async (req, res, next) => {
       timeToFirstTouch: body.timeToFirstTouch ?? null,
       totalAuthTime: body.totalAuthTime,
       errorCount: body.errorCount ?? 0,
+      returnCount:
+        typeof body.returnCount === 'number' && body.returnCount >= 0
+          ? body.returnCount
+          : 0,
       submittedErrors: Array.isArray(body.submittedErrors)
         ? body.submittedErrors
         : [],

@@ -95,6 +95,12 @@ export function nextStage(stage: StudyStage): StudyStage | null {
   return STAGE_ORDER[idx + 1]
 }
 
+export function previousStage(stage: StudyStage): StudyStage | null {
+  const idx = STAGE_ORDER.indexOf(stage)
+  if (idx <= 0) return null
+  return STAGE_ORDER[idx - 1]
+}
+
 export function isTestStage(stage: StudyStage): boolean {
   return (
     stage === 'BASELINE_TEST' ||

@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { StudyStage } from '../lib/stageFlow'
 import type { PinCondition } from '../store/studyStore'
 
-export type KeyEventKind = 'digit' | 'clear' | 'cancel'
+export type KeyEventKind = 'digit' | 'clear' | 'cancel' | 'return'
 
 export type Keystroke = {
   key: string
@@ -22,6 +22,15 @@ export type LockScreenMetrics = {
   timeToFirstTouch: number | null
   totalAuthTime: number
   errorCount: number
+  /**
+   * Number of times the participant pressed the lock-screen "Return"
+   * button during the current complexity phase. Counted by the global
+   * store (`currentPhaseReturnCount`) and snapshotted into the metrics
+   * here at unlock-success time. Accumulates across SETUP ↔ TEST bounces
+   * within a single phase; the store resets it only after the matching
+   * `*_TLX` survey is submitted.
+   */
+  returnCount: number
   submittedErrors: string[]
   keystrokeLog: Keystroke[]
 }
@@ -49,6 +58,12 @@ export type LockScreenSuccessMeta = {
   currentCondition: PinCondition
   currentStage: StudyStage
   expectedPin: string
+  /**
+   * Snapshot of `currentPhaseReturnCount` from the global store taken at
+   * unlock-success time. Persisted alongside the rest of the metrics so an
+   * offline audit of localStorage carries the working-memory signal too.
+   */
+  returnCount: number
 }
 
 export type UseLockScreenTelemetryApi = {
@@ -100,6 +115,7 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
         totalAuthTime: completedAt - renderTimestamp,
         keystrokeLog: [...keystrokeLogRef.current],
         errorCount: errorCountRef.current,
+        returnCount: meta.returnCount,
         submittedErrors: [...submittedErrorsRef.current],
         completedAt,
       }

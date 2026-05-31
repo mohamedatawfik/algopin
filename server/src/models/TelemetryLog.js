@@ -4,7 +4,7 @@ const { Schema, model } = mongoose
 
 export const CONDITIONS = ['Baseline', 'Low', 'Medium', 'High']
 export const STUDY_PHASES = ['day1', 'day7']
-export const KEY_KINDS = ['digit', 'clear', 'cancel']
+export const KEY_KINDS = ['digit', 'clear', 'cancel', 'return']
 
 // NASA-TLX ratings. The classic scale is 1-21; a simplified Likert (1-7) is
 // also acceptable, so we validate the inclusive 1..21 range to support both.
@@ -72,6 +72,7 @@ const telemetryLogSchema = new Schema(
     timeToFirstTouch: { type: Number, default: null },
     totalAuthTime: { type: Number, required: true },
     errorCount: { type: Number, default: 0 },
+    returnCount: { type: Number, default: 0 },
     submittedErrors: { type: [String], default: [] },
     keystrokeLog: { type: [keystrokeSchema], default: [] },
     nasaTlx: { type: nasaTlxSchema, required: true },

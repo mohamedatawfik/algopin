@@ -27,7 +27,7 @@ import {
   isValidReplacedIndex,
   ResolvedConfiguration,
 } from '../lib/pinComposer'
-import { AlgorithmComplexity } from '../lib/stageFlow'
+import { AlgorithmComplexity, previousStage } from '../lib/stageFlow'
 import {
   configKeyForComplexity,
   useStudyStore,
@@ -40,7 +40,7 @@ const SUCCESS_NAVIGATE_DELAY_MS = 900
 type KeySpec =
   | { kind: 'digit'; value: string }
   | { kind: 'clear' }
-  | { kind: 'cancel' }
+  | { kind: 'return' }
 
 const KEYPAD: KeySpec[] = [
   { kind: 'digit', value: '1' },
@@ -52,7 +52,7 @@ const KEYPAD: KeySpec[] = [
   { kind: 'digit', value: '7' },
   { kind: 'digit', value: '8' },
   { kind: 'digit', value: '9' },
-  { kind: 'cancel' },
+  { kind: 'return' },
   { kind: 'digit', value: '0' },
   { kind: 'clear' },
 ]
@@ -101,7 +101,10 @@ export function LockScreenView() {
     configurations,
     appendTelemetry,
     advanceStage,
+    setStage,
     setTempTelemetry,
+    currentPhaseReturnCount,
+    incrementCurrentPhaseReturnCount,
   } = useStudyStore()
   const basePin = storedBasePin ?? ''
   const [now, setNow] = useState(() => new Date())
@@ -178,19 +181,25 @@ export function LockScreenView() {
         condition: currentCondition,
       })
       if (ok) {
+        // Snapshot the live store value so the count we persist matches
+        // the count we ship to the TLX payload, even if the store mutates
+        // mid-render.
+        const phaseReturnCount = currentPhaseReturnCount
         const submission = telemetry.recordSuccess({
           mTurkId,
           currentCondition,
           currentStage,
           expectedPin: target,
+          returnCount: phaseReturnCount,
         })
         appendTelemetry('pin_success', {
           errorCount: submission.errorCount,
+          returnCount: submission.returnCount,
           totalAuthTime: submission.totalAuthTime,
           timeToFirstTouch: submission.timeToFirstTouch,
         })
         // The lock screen no longer talks to /api/telemetry directly. We
-        // compile just the six performance metrics the TLX view needs and
+        // compile just the performance metrics the TLX view needs and
         // stash them in tempTelemetry; the TLX view merges in mTurkId,
         // condition, and the NASA-TLX ratings before POSTing. The richer
         // localStorage record was already written by `recordSuccess` above.
@@ -199,6 +208,7 @@ export function LockScreenView() {
           timeToFirstTouch: submission.timeToFirstTouch,
           totalAuthTime: submission.totalAuthTime,
           errorCount: submission.errorCount,
+          returnCount: submission.returnCount,
           submittedErrors: submission.submittedErrors,
           keystrokeLog: submission.keystrokeLog,
         }
@@ -233,6 +243,7 @@ export function LockScreenView() {
       appendTelemetry,
       basePin,
       currentCondition,
+      currentPhaseReturnCount,
       currentStage,
       errorCount,
       mTurkId,
@@ -263,11 +274,33 @@ export function LockScreenView() {
     appendTelemetry('pin_key', { key: 'clear' })
   }
 
-  const onCancel = () => {
+  const handleReturn = () => {
     if (showSuccess) return
-    telemetry.recordKey('CANCEL', 'cancel')
-    appendTelemetry('pin_key', { key: 'cancel' })
+    // Fail-safe escape hatch: send the participant back to the matching
+    // setup stage (e.g. LOW_TEST -> LOW_SETUP) so they can re-read the rule
+    // they just learned without being forced to guess attempts. The lock
+    // screen unmounts on stage change, so any in-progress entry and the
+    // hook-internal keystroke buffer are discarded automatically.
+    const target = previousStage(currentStage)
+    telemetry.recordKey('RETURN', 'return')
+    // Bump the per-phase Return counter *before* navigating: this is the
+    // working-memory-failure signal we report alongside the lock-screen
+    // metrics, and we want the post-increment value to be visible in the
+    // appended telemetry entry below for live-debugging.
+    incrementCurrentPhaseReturnCount()
+    const nextReturnCount = currentPhaseReturnCount + 1
+    appendTelemetry('pin_return', {
+      from: currentStage,
+      to: target,
+      condition: currentCondition,
+      enteredLength: entered.length,
+      errorCount,
+      currentPhaseReturnCount: nextReturnCount,
+    })
     setEntered('')
+    if (target) {
+      setStage(target)
+    }
   }
 
   return (
@@ -472,12 +505,12 @@ export function LockScreenView() {
           }}
         >
           {KEYPAD.map((key, idx) => {
-            if (key.kind === 'cancel') {
+            if (key.kind === 'return') {
               return (
                 <ActionButton
-                  key="cancel"
-                  label="Cancel"
-                  onClick={onCancel}
+                  key="return"
+                  label="Return"
+                  onClick={handleReturn}
                   disabled={showSuccess}
                 />
               )

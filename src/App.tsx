@@ -66,23 +66,27 @@ function AppRoutes() {
           element={<StaticSetupView />}
         />
         <Route path={STAGE_ROUTES.BASELINE_TEST} element={<LockScreenView />} />
+        <Route path={STAGE_ROUTES.BASELINE_TLX} element={<SurveyView />} />
         <Route path={STAGE_ROUTES.ALGO_INTRO} element={<AlgoIntroView />} />
         <Route
           path={STAGE_ROUTES.LOW_SETUP}
           element={<AlgorithmSetupView complexity="Low" />}
         />
         <Route path={STAGE_ROUTES.LOW_TEST} element={<LockScreenView />} />
+        <Route path={STAGE_ROUTES.LOW_TLX} element={<SurveyView />} />
         <Route
           path={STAGE_ROUTES.MED_SETUP}
           element={<AlgorithmSetupView complexity="Medium" />}
         />
         <Route path={STAGE_ROUTES.MED_TEST} element={<LockScreenView />} />
+        <Route path={STAGE_ROUTES.MED_TLX} element={<SurveyView />} />
         <Route
           path={STAGE_ROUTES.HIGH_SETUP}
           element={<AlgorithmSetupView complexity="High" />}
         />
         <Route path={STAGE_ROUTES.HIGH_TEST} element={<LockScreenView />} />
-        <Route path={STAGE_ROUTES.SURVEY} element={<SurveyView />} />
+        <Route path={STAGE_ROUTES.HIGH_TLX} element={<SurveyView />} />
+        <Route path={STAGE_ROUTES.FINAL_SURVEY} element={<SurveyView />} />
         <Route path="*" element={<Navigate to={STAGE_ROUTES.ONBOARDING} replace />} />
       </Routes>
     </>

@@ -1,8 +1,37 @@
 import { Router } from 'express'
 
-import TelemetryLog, { CONDITIONS } from '../models/TelemetryLog.js'
+import TelemetryLog, {
+  CONDITIONS,
+  NASA_TLX_FIELDS,
+  NASA_TLX_MAX,
+  NASA_TLX_MIN,
+} from '../models/TelemetryLog.js'
 
 const router = Router()
+
+function validateNasaTlx(raw) {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'nasaTlx must be an object with the six TLX ratings' }
+  }
+  const cleaned = {}
+  for (const field of NASA_TLX_FIELDS) {
+    const value = raw[field]
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return {
+        ok: false,
+        error: `nasaTlx.${field} must be a number`,
+      }
+    }
+    if (value < NASA_TLX_MIN || value > NASA_TLX_MAX) {
+      return {
+        ok: false,
+        error: `nasaTlx.${field} must be between ${NASA_TLX_MIN} and ${NASA_TLX_MAX}`,
+      }
+    }
+    cleaned[field] = value
+  }
+  return { ok: true, value: cleaned }
+}
 
 router.post('/', async (req, res, next) => {
   try {
@@ -29,6 +58,11 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'totalAuthTime must be a number' })
     }
 
+    const tlx = validateNasaTlx(body.nasaTlx)
+    if (!tlx.ok) {
+      return res.status(400).json({ error: tlx.error })
+    }
+
     const doc = await TelemetryLog.create({
       mTurkId: body.mTurkId.trim(),
       condition,
@@ -44,6 +78,7 @@ router.post('/', async (req, res, next) => {
         ? body.submittedErrors
         : [],
       keystrokeLog: Array.isArray(body.keystrokeLog) ? body.keystrokeLog : [],
+      nasaTlx: tlx.value,
       completedAt: body.completedAt,
       schemaVersion: body.schemaVersion,
     })

@@ -1,9 +1,13 @@
 import { create } from 'zustand'
 import {
   fetchAlgorithms,
+  finalizeParticipant as finalizeParticipantApi,
   initParticipant,
   postTelemetry,
   PredefinedAlgorithm,
+  StudyPhase,
+  SusAnswers,
+  TelemetrySubmission,
 } from '../lib/api'
 import {
   AlgorithmComplexity,
@@ -47,7 +51,7 @@ export type AlgorithmsCache = Partial<
   Record<AlgorithmComplexity, PredefinedAlgorithm[]>
 >
 
-import type { LockScreenSubmission } from '../hooks/useLockScreenTelemetry'
+import type { LockScreenMetrics } from '../hooks/useLockScreenTelemetry'
 
 type StudyState = {
   mTurkId: string
@@ -57,9 +61,31 @@ type StudyState = {
   configurations: Configurations
   algorithmsByComplexity: AlgorithmsCache
   telemetry: TelemetryEntry[]
+  /**
+   * Holds the six lock-screen metrics for the most recently completed
+   * `*_TEST` condition while the participant works through the corresponding
+   * `*_TLX` survey. The TLX view merges these metrics with `mTurkId`,
+   * `condition`, and the gathered `nasaTlx` ratings, then POSTs the combined
+   * payload to /api/telemetry. The slot is cleared only after that POST
+   * succeeds.
+   */
+  tempTelemetry: LockScreenMetrics | null
+  /**
+   * The participant's answers to the 10 standard System Usability Scale
+   * items, captured at the end of Phase 1 (and again at Phase 2 if/when a
+   * Day-7 follow-up is added). Each value is an integer 1..5.
+   */
+  susAnswers: SusAnswers | null
+  /**
+   * Phase 1 finalization timestamp returned by the backend after a
+   * successful POST /api/participant/finalize. `null` until the SUS has
+   * been submitted.
+   */
+  phase1FinalizedAt: string | null
   consentAccepted: boolean
   lastTelemetryPostError: string | null
   lastParticipantInitError: string | null
+  lastFinalizeError: string | null
 
   setMTurkId: (id: string) => void
   setStage: (stage: StudyStage) => void
@@ -71,6 +97,9 @@ type StudyState = {
     config: AlgorithmConfiguration | null
   ) => void
   appendTelemetry: (event: string, payload?: Record<string, unknown>) => void
+  setTempTelemetry: (metrics: LockScreenMetrics | null) => void
+  clearTempTelemetry: () => void
+  setSusAnswers: (answers: SusAnswers | null) => void
   resetStudySession: () => void
 
   loadAlgorithms: (
@@ -81,8 +110,21 @@ type StudyState = {
     basePin: string
   ) => Promise<void>
   submitTelemetry: (
-    submission: LockScreenSubmission
+    submission: TelemetrySubmission
   ) => Promise<{ ok: boolean; id?: string; error?: string }>
+  /**
+   * Persists the SUS answers locally and POSTs them to
+   * /api/participant/finalize. On success the `phase1FinalizedAt` timestamp
+   * is updated and any previous error is cleared.
+   */
+  finalizeParticipant: (
+    answers: SusAnswers,
+    options?: { phase?: StudyPhase }
+  ) => Promise<{
+    ok: boolean
+    completedAt?: string
+    error?: string
+  }>
 }
 
 const COMPLEXITY_TO_CONFIG_KEY: Record<AlgorithmComplexity, ConfigurationKey> =
@@ -112,9 +154,13 @@ const initialState = {
   configurations: initialConfigurations,
   algorithmsByComplexity: {} as AlgorithmsCache,
   telemetry: [] as TelemetryEntry[],
+  tempTelemetry: null as LockScreenMetrics | null,
+  susAnswers: null as SusAnswers | null,
+  phase1FinalizedAt: null as string | null,
   consentAccepted: false,
   lastTelemetryPostError: null as string | null,
   lastParticipantInitError: null as string | null,
+  lastFinalizeError: null as string | null,
 }
 
 function makeId(): string {
@@ -162,12 +208,22 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       ],
     }),
 
+  setTempTelemetry: (submission) => set({ tempTelemetry: submission }),
+
+  clearTempTelemetry: () => set({ tempTelemetry: null }),
+
+  setSusAnswers: (answers) => set({ susAnswers: answers }),
+
   resetStudySession: () =>
     set({
       ...initialState,
       configurations: { ...initialConfigurations },
       algorithmsByComplexity: {},
       telemetry: [],
+      tempTelemetry: null,
+      susAnswers: null,
+      phase1FinalizedAt: null,
+      lastFinalizeError: null,
     }),
 
   loadAlgorithms: async (complexity) => {
@@ -208,6 +264,35 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       const message =
         err instanceof Error ? err.message : 'Failed to post telemetry'
       set({ lastTelemetryPostError: message })
+      return { ok: false, error: message }
+    }
+  },
+
+  finalizeParticipant: async (answers, options) => {
+    const phase: StudyPhase = options?.phase ?? 'day1'
+    set({ susAnswers: answers })
+    const mTurkId = get().mTurkId
+    if (!mTurkId) {
+      const message = 'mTurkId is missing; cannot finalize participant'
+      set({ lastFinalizeError: message })
+      return { ok: false, error: message }
+    }
+    try {
+      const res = await finalizeParticipantApi({
+        mTurkId,
+        susAnswers: answers,
+        phase,
+      })
+      const updates: Partial<StudyState> = { lastFinalizeError: null }
+      if (phase === 'day1') {
+        updates.phase1FinalizedAt = res.completedAt
+      }
+      set(updates)
+      return { ok: true, completedAt: res.completedAt }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to finalize participant'
+      set({ lastFinalizeError: message })
       return { ok: false, error: message }
     }
   },

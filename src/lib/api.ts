@@ -1,4 +1,5 @@
-import type { LockScreenSubmission } from '../hooks/useLockScreenTelemetry'
+import type { Keystroke } from '../hooks/useLockScreenTelemetry'
+import type { PinCondition } from '../store/studyStore'
 import type { AlgorithmComplexity } from './stageFlow'
 
 const DEFAULT_API_BASE = 'http://localhost:4000'
@@ -40,6 +41,68 @@ export type ParticipantInitResponse = {
 export type TelemetryPostResponse = {
   id: string
   createdAt?: string
+}
+
+/** NASA-TLX ratings, one number per dimension (1..7 or 1..21). */
+export type NasaTlxRatings = {
+  mentalDemand: number
+  physicalDemand: number
+  temporalDemand: number
+  performance: number
+  effort: number
+  frustration: number
+}
+
+/**
+ * The exact JSON body POSTed to /api/telemetry once a condition is fully
+ * complete (lock screen + TLX). Identity (`mTurkId`, `condition`) is supplied
+ * by the TLX view from the global store; lock-screen metrics come from
+ * `tempTelemetry`; ratings come from the slider state.
+ */
+export type TelemetrySubmission = {
+  mTurkId: string
+  condition: PinCondition
+  renderTimestamp: number
+  timeToFirstTouch: number | null
+  totalAuthTime: number
+  errorCount: number
+  submittedErrors: string[]
+  keystrokeLog: Keystroke[]
+  nasaTlx: NasaTlxRatings
+}
+
+export type StudyPhase = 'day1' | 'day7'
+
+/**
+ * Number of items on the standard System Usability Scale (Brooke, 1996).
+ * Each answer is an integer 1..5 (Strongly Disagree .. Strongly Agree).
+ */
+export const SUS_ITEM_COUNT = 10
+export const SUS_MIN_VALUE = 1
+export const SUS_MAX_VALUE = 5
+
+export type SusAnswers = number[]
+
+export type FinalizeSubmission = {
+  mTurkId: string
+  susAnswers: SusAnswers
+  phase?: StudyPhase
+}
+
+export type FinalizeResponse = {
+  ok: boolean
+  phase: StudyPhase
+  completedAt: string
+  participant: {
+    _id: string
+    mTurkId: string
+    basePin: string
+    finalize?: {
+      day1?: { susAnswers: number[]; completedAt: string }
+      day7?: { susAnswers: number[]; completedAt: string }
+    }
+    createdAt?: string
+  }
 }
 
 export class ApiError extends Error {
@@ -104,9 +167,18 @@ export async function initParticipant(
 }
 
 export async function postTelemetry(
-  submission: LockScreenSubmission
+  submission: TelemetrySubmission
 ): Promise<TelemetryPostResponse> {
   return request<TelemetryPostResponse>('/api/telemetry', {
+    method: 'POST',
+    body: JSON.stringify(submission),
+  })
+}
+
+export async function finalizeParticipant(
+  submission: FinalizeSubmission
+): Promise<FinalizeResponse> {
+  return request<FinalizeResponse>('/api/participant/finalize', {
     method: 'POST',
     body: JSON.stringify(submission),
   })

@@ -16,7 +16,10 @@ import {
 } from '@mui/material'
 import { keyframes } from '@mui/system'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLockScreenTelemetry } from '../hooks/useLockScreenTelemetry'
+import {
+  LockScreenMetrics,
+  useLockScreenTelemetry,
+} from '../hooks/useLockScreenTelemetry'
 import {
   calculateExpectedPin,
   defaultPositionsForComplexity,
@@ -29,8 +32,8 @@ import {
   useStudyStore,
 } from '../store/studyStore'
 
-const PHONE_WIDTH = 400
-const PHONE_HEIGHT = 800
+const PHONE_MAX_WIDTH = 400
+const PHONE_MAX_HEIGHT = 850
 const SUCCESS_NAVIGATE_DELAY_MS = 900
 
 type KeySpec =
@@ -99,7 +102,7 @@ export function LockScreenView() {
     appendTelemetry,
     advanceStage,
     loadAlgorithms,
-    submitTelemetry,
+    setTempTelemetry,
   } = useStudyStore()
   const basePin = storedBasePin ?? ''
   const [now, setNow] = useState(() => new Date())
@@ -196,23 +199,25 @@ export function LockScreenView() {
           totalAuthTime: submission.totalAuthTime,
           timeToFirstTouch: submission.timeToFirstTouch,
         })
-        // Best-effort POST to /api/telemetry. The submission is already saved
-        // to localStorage by the hook, so a network failure does not block the
-        // pipeline; the store records the last error for later sync.
-        submitTelemetry(submission)
-          .then((res) => {
-            appendTelemetry(
-              res.ok ? 'telemetry_post_ok' : 'telemetry_post_failed',
-              res.ok ? { id: res.id } : { error: res.error }
-            )
-          })
-          .catch((err) => {
-            appendTelemetry('telemetry_post_failed', {
-              error: err instanceof Error ? err.message : String(err),
-            })
-          })
+        // The lock screen no longer talks to /api/telemetry directly. We
+        // compile just the six performance metrics the TLX view needs and
+        // stash them in tempTelemetry; the TLX view merges in mTurkId,
+        // condition, and the NASA-TLX ratings before POSTing. The richer
+        // localStorage record was already written by `recordSuccess` above.
+        const metrics: LockScreenMetrics = {
+          renderTimestamp: submission.renderTimestamp,
+          timeToFirstTouch: submission.timeToFirstTouch,
+          totalAuthTime: submission.totalAuthTime,
+          errorCount: submission.errorCount,
+          submittedErrors: submission.submittedErrors,
+          keystrokeLog: submission.keystrokeLog,
+        }
+        setTempTelemetry(metrics)
         setShowSuccess(true)
         successTimerRef.current = window.setTimeout(() => {
+          // STAGE_ORDER pairs every *_TEST stage with its *_TLX successor, so
+          // advancing here lands the participant on the matching TLX phase
+          // (e.g. LOW_TEST -> LOW_TLX, MED_TEST -> MED_TLX).
           advanceStage()
         }, SUCCESS_NAVIGATE_DELAY_MS)
       } else {
@@ -242,7 +247,7 @@ export function LockScreenView() {
       errorCount,
       mTurkId,
       resolvedConfig,
-      submitTelemetry,
+      setTempTelemetry,
       telemetry,
       unreadCount,
     ]
@@ -279,14 +284,19 @@ export function LockScreenView() {
     <Box
       sx={{
         minHeight: '100vh',
+        // Modern mobile browsers report a dynamic viewport that excludes
+        // the URL bar; prefer it where supported so the phone never gets
+        // clipped beneath the address bar on iOS Safari / Android Chrome.
+        '@supports (min-height: 100dvh)': {
+          minHeight: '100dvh',
+        },
         width: '100%',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         background:
           'radial-gradient(circle at 30% 0%, #1f2230 0%, #0a0a0c 55%, #050507 100%)',
-        py: 4,
-        px: 2,
+        padding: '16px',
       }}
     >
       <Paper
@@ -294,29 +304,45 @@ export function LockScreenView() {
         sx={{
           position: 'relative',
           width: '100%',
-          maxWidth: PHONE_WIDTH,
-          height: PHONE_HEIGHT,
-          maxHeight: 'calc(100vh - 32px)',
+          maxWidth: PHONE_MAX_WIDTH,
+          height: '100%',
+          maxHeight: PHONE_MAX_HEIGHT,
           borderRadius: '44px',
-          overflow: 'hidden',
+          overflowY: 'auto',
+          overflowX: 'hidden',
           display: 'flex',
           flexDirection: 'column',
+          justifyContent: 'space-between',
           border: '1px solid rgba(255,255,255,0.08)',
           boxShadow:
             '0 30px 80px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.04)',
           backgroundImage:
             'linear-gradient(180deg, rgba(35,38,55,0.95) 0%, rgba(15,16,22,0.98) 55%, rgba(8,8,12,1) 100%)',
+          // Keep the sleek "native device" look by hiding scrollbars
+          // even when overflow forces them on smaller viewports.
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          '&::-webkit-scrollbar': {
+            width: '0px',
+            height: '0px',
+            background: 'transparent',
+          },
         }}
       >
         <StatusBar time={formatStatusTime(now)} battery={battery} />
 
         <Stack
           alignItems="center"
-          sx={{ pt: 2, pb: 1.5, px: 3, color: 'rgba(255,255,255,0.95)' }}
+          sx={{
+            pt: { xs: 1, sm: 2 },
+            pb: { xs: 1, sm: 1.5 },
+            px: 3,
+            color: 'rgba(255,255,255,0.95)',
+          }}
         >
           <Typography
             sx={{
-              fontSize: 76,
+              fontSize: { xs: 56, sm: 76 },
               fontWeight: 200,
               lineHeight: 1,
               letterSpacing: '-0.05em',
@@ -327,8 +353,8 @@ export function LockScreenView() {
           </Typography>
           <Typography
             sx={{
-              mt: 1,
-              fontSize: 16,
+              mt: { xs: 0.5, sm: 1 },
+              fontSize: { xs: 14, sm: 16 },
               color: 'rgba(255,255,255,0.7)',
               fontWeight: 400,
               letterSpacing: '0.01em',
@@ -338,7 +364,7 @@ export function LockScreenView() {
           </Typography>
         </Stack>
 
-        <Box sx={{ px: 2.5, mt: 0.5 }}>
+        <Box sx={{ px: 2.5, mt: { xs: 0.25, sm: 0.5 } }}>
           <Paper
             elevation={0}
             sx={{
@@ -403,12 +429,16 @@ export function LockScreenView() {
 
         <Stack
           alignItems="center"
-          sx={{ mt: 'auto', pt: 2.5, pb: 1, color: 'rgba(255,255,255,0.85)' }}
+          sx={{
+            pt: { xs: 1.25, sm: 2.5 },
+            pb: { xs: 0.5, sm: 1 },
+            color: 'rgba(255,255,255,0.85)',
+          }}
         >
           <LockRounded sx={{ fontSize: 22, color: 'rgba(255,255,255,0.7)' }} />
           <Typography
             sx={{
-              mt: 1,
+              mt: { xs: 0.5, sm: 1 },
               fontSize: 12,
               letterSpacing: 2,
               color: 'rgba(255,255,255,0.55)',
@@ -444,11 +474,11 @@ export function LockScreenView() {
           sx={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
-            rowGap: 1.25,
-            columnGap: 2,
-            px: 3,
-            pt: 2,
-            pb: 3,
+            rowGap: { xs: 0.75, sm: 1.25 },
+            columnGap: { xs: 1.25, sm: 2 },
+            px: { xs: 2, sm: 3 },
+            pt: { xs: 1, sm: 2 },
+            pb: { xs: 2, sm: 3 },
           }}
         >
           {KEYPAD.map((key, idx) => {
@@ -557,7 +587,7 @@ function PinIndicators({
     <Stack
       direction="row"
       spacing={1.75}
-      sx={{ mt: 2, mb: 1, minHeight: 16 }}
+      sx={{ mt: { xs: 1, sm: 2 }, mb: { xs: 0.5, sm: 1 }, minHeight: 16 }}
       aria-label={`PIN ${filled} of ${length} digits entered`}
     >
       {Array.from({ length }).map((_, i) => {
@@ -595,8 +625,8 @@ function DigitButton({
       onClick={() => onClick(digit)}
       disabled={disabled}
       sx={{
-        width: 72,
-        height: 72,
+        width: { xs: 60, sm: 72 },
+        height: { xs: 60, sm: 72 },
         minWidth: 0,
         mx: 'auto',
         p: 0,
@@ -618,7 +648,7 @@ function DigitButton({
     >
       <Typography
         sx={{
-          fontSize: 28,
+          fontSize: { xs: 24, sm: 28 },
           fontWeight: 400,
           letterSpacing: '0.01em',
           fontVariantNumeric: 'tabular-nums',
@@ -644,8 +674,8 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       sx={{
-        width: 72,
-        height: 72,
+        width: { xs: 60, sm: 72 },
+        height: { xs: 60, sm: 72 },
         minWidth: 0,
         mx: 'auto',
         p: 0,
@@ -653,7 +683,7 @@ function ActionButton({
         color: 'rgba(255,255,255,0.9)',
         bgcolor: 'transparent',
         border: '1px solid rgba(255,255,255,0.08)',
-        fontSize: 13,
+        fontSize: { xs: 12, sm: 13 },
         fontWeight: 500,
         '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
         '&:active': { bgcolor: 'rgba(255,255,255,0.14)' },

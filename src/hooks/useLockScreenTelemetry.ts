@@ -10,20 +10,35 @@ export type Keystroke = {
   timestamp: number
 }
 
-export type LockScreenSubmission = {
+/**
+ * The minimal lock-screen-side performance object captured at unlock-success
+ * time. This is the exact shape that gets stashed in `studyStore.tempTelemetry`
+ * while the participant fills in the NASA-TLX survey for the same condition,
+ * and is what the TLX view merges with `mTurkId`, `condition`, and `nasaTlx`
+ * before POSTing to /api/telemetry.
+ */
+export type LockScreenMetrics = {
+  renderTimestamp: number
+  timeToFirstTouch: number | null
+  totalAuthTime: number
+  errorCount: number
+  submittedErrors: string[]
+  keystrokeLog: Keystroke[]
+}
+
+/**
+ * The full localStorage-persisted snapshot of a successful unlock. It is a
+ * superset of `LockScreenMetrics` and additionally records identity,
+ * stage/condition context, and the resolved expected PIN for offline audits.
+ */
+export type LockScreenSubmission = LockScreenMetrics & {
   schemaVersion: 1
   mTurkId: string
   currentCondition: PinCondition
   currentStage: StudyStage
   expectedPin: string
   expectedPinLength: number
-  renderTimestamp: number
   firstTouchTimestamp: number | null
-  timeToFirstTouch: number | null
-  totalAuthTime: number
-  keystrokeLog: Keystroke[]
-  errorCount: number
-  submittedErrors: string[]
   completedAt: number
 }
 

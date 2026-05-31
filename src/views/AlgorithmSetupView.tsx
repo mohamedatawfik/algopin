@@ -43,9 +43,9 @@ const COMPLEXITY_LABELS: Record<AlgorithmComplexity, string> = {
 }
 
 const COMPLEXITY_STAGE_INDEX: Record<AlgorithmComplexity, number> = {
-  Low: 5,
-  Medium: 7,
-  High: 9,
+  Low: 6,
+  Medium: 9,
+  High: 12,
 }
 
 export type AlgorithmSetupViewProps = {
@@ -238,7 +238,7 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
     <Stack spacing={3} sx={{ maxWidth: 560, mx: 'auto', py: 2 }}>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Chip
-          label={`Stage ${COMPLEXITY_STAGE_INDEX[complexity]} / 11`}
+          label={`Stage ${COMPLEXITY_STAGE_INDEX[complexity]} / 15`}
           size="small"
           variant="outlined"
         />

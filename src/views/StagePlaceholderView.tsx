@@ -11,14 +11,18 @@ const STAGE_LABELS: Record<StudyStage, string> = {
   ONBOARDING: 'Onboarding',
   STATIC_SETUP: 'Static PIN setup',
   BASELINE_TEST: 'Baseline test',
+  BASELINE_TLX: 'Baseline NASA-TLX',
   ALGO_INTRO: 'Algorithmic PIN introduction',
   LOW_SETUP: 'Low complexity setup',
   LOW_TEST: 'Low complexity test',
+  LOW_TLX: 'Low complexity NASA-TLX',
   MED_SETUP: 'Medium complexity setup',
   MED_TEST: 'Medium complexity test',
+  MED_TLX: 'Medium complexity NASA-TLX',
   HIGH_SETUP: 'High complexity setup',
   HIGH_TEST: 'High complexity test',
-  SURVEY: 'NASA-TLX survey',
+  HIGH_TLX: 'High complexity NASA-TLX',
+  FINAL_SURVEY: 'Final survey',
 }
 
 const STAGE_DESCRIPTIONS: Partial<Record<StudyStage, string>> = {

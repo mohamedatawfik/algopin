@@ -1,12 +1,9 @@
 import {
-  Alert,
   Box,
   Button,
-  ButtonBase,
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   FormControl,
   FormControlLabel,
   FormHelperText,
@@ -18,23 +15,21 @@ import {
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import {
+  AlgorithmType,
   BASE_PIN_LENGTH,
   computeDynamicValue,
   decomposePreview,
-  defaultPositionsForComplexity,
-  inferAlgorithmType,
-  MAX_DYNAMIC_POSITIONS,
-  MIN_DYNAMIC_POSITIONS,
+  getCanonicalType,
+  isValidReplacedIndex,
   placeholderDescriptionForType,
   placeholderForType,
+  REPLACEABLE_INDICES,
 } from '../lib/pinComposer'
 import { AlgorithmComplexity } from '../lib/stageFlow'
 import {
   configKeyForComplexity,
-  DynamicPositions,
   useStudyStore,
 } from '../store/studyStore'
-import type { PredefinedAlgorithm } from '../lib/api'
 
 const COMPLEXITY_LABELS: Record<AlgorithmComplexity, string> = {
   Low: 'Low complexity',
@@ -48,6 +43,35 @@ const COMPLEXITY_STAGE_INDEX: Record<AlgorithmComplexity, number> = {
   High: 12,
 }
 
+const ORDINAL_LABELS = ['1st', '2nd', '3rd', '4th'] as const
+
+/**
+ * Title + descriptive blurb shown on the static "Assigned Rule" card.
+ * The rule is no longer participant-selectable — it is fixed by the
+ * complexity phase, so this mapping is the single source of truth for
+ * what the UI introduces to the participant.
+ */
+const RULE_INFO_BY_COMPLEXITY: Record<
+  AlgorithmComplexity,
+  { title: string; description: string }
+> = {
+  Low: {
+    title: 'Digit of the minute',
+    description:
+      'For this phase, exactly one digit of your base PIN is replaced by the units digit of the current minute shown on the lock screen. For example, if it is 14:27, the replacement digit is 7.',
+  },
+  Medium: {
+    title: 'Unread messages digit',
+    description:
+      'For this phase, exactly one digit of your base PIN is replaced by the units digit of the unread messages count shown on the lock screen.',
+  },
+  High: {
+    title: 'Cross-sum of the time',
+    description:
+      'For this phase, exactly one digit of your base PIN is replaced by the units digit of the cross-sum of the current time (HHMM). For example, at 12:24 the cross-sum is 1+2+2+4 = 9, so the replacement digit is 9.',
+  },
+}
+
 export type AlgorithmSetupViewProps = {
   complexity: AlgorithmComplexity
 }
@@ -56,10 +80,8 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   const {
     basePin: storedBasePin,
     configurations,
-    algorithmsByComplexity,
     appendTelemetry,
     advanceStage,
-    loadAlgorithms,
     setConfiguration,
   } = useStudyStore()
 
@@ -67,81 +89,32 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   const configKey = configKeyForComplexity(complexity)
   const existingConfig = configurations[configKey]
 
-  const cached = algorithmsByComplexity[complexity] ?? []
-  const [algorithms, setAlgorithms] = useState<PredefinedAlgorithm[]>(cached)
-  const [loading, setLoading] = useState<boolean>(cached.length === 0)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
-  const [selectedAlgorithmId, setSelectedAlgorithmId] = useState<string>(
-    existingConfig?.algorithmId ?? cached[0]?.algorithmId ?? ''
+  // The rule is strictly predefined by complexity. We no longer track a
+  // selected algorithm in local state — the type is derived from the phase
+  // and written straight into the global configuration.
+  const algorithmType: AlgorithmType = useMemo(
+    () => getCanonicalType(complexity),
+    [complexity]
   )
 
-  const [positions, setPositions] = useState<DynamicPositions>(() => {
-    const seed =
-      existingConfig?.dynamicPositions ??
-      defaultPositionsForComplexity(complexity)
-    return [...seed].sort((a, b) => a - b).slice(0, MAX_DYNAMIC_POSITIONS)
-  })
+  const ruleInfo = RULE_INFO_BY_COMPLEXITY[complexity]
+
+  const [replacedIndex, setReplacedIndex] = useState<number | null>(
+    isValidReplacedIndex(existingConfig?.replacedIndex)
+      ? (existingConfig!.replacedIndex as number)
+      : null
+  )
 
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
-    appendTelemetry('algorithm_setup_opened', { complexity })
-  }, [appendTelemetry, complexity])
-
-  useEffect(() => {
-    let cancelled = false
-    async function run() {
-      if (cached.length > 0) {
-        setAlgorithms(cached)
-        setLoading(false)
-        return
-      }
-      setLoading(true)
-      setLoadError(null)
-      try {
-        const list = await loadAlgorithms(complexity)
-        if (cancelled) return
-        setAlgorithms(list)
-        if (list.length > 0 && !selectedAlgorithmId) {
-          setSelectedAlgorithmId(list[0].algorithmId)
-        }
-      } catch (err) {
-        if (cancelled) return
-        const message =
-          err instanceof Error ? err.message : 'Failed to load algorithms'
-        setLoadError(message)
-        appendTelemetry('algorithm_setup_load_error', {
-          complexity,
-          error: message,
-        })
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-    // We intentionally only run this when complexity changes; cache + select state
-    // handle subsequent updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [complexity])
+    appendTelemetry('algorithm_setup_opened', { complexity, algorithmType })
+  }, [appendTelemetry, complexity, algorithmType])
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(t)
   }, [])
-
-  const selectedAlgorithm = useMemo(
-    () => algorithms.find((a) => a.algorithmId === selectedAlgorithmId),
-    [algorithms, selectedAlgorithmId]
-  )
-
-  const algorithmType = useMemo(
-    () => inferAlgorithmType(selectedAlgorithm, complexity),
-    [selectedAlgorithm, complexity]
-  )
 
   const sampleUnreadCount = 4
   const dynamicValue = useMemo(
@@ -155,81 +128,43 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
 
   const ruleSegments = useMemo(
     () =>
-      decomposePreview(basePin, placeholderForType(algorithmType), positions),
-    [basePin, algorithmType, positions]
+      decomposePreview(
+        basePin,
+        placeholderForType(algorithmType),
+        replacedIndex
+      ),
+    [basePin, algorithmType, replacedIndex]
   )
   const liveSegments = useMemo(
-    () => decomposePreview(basePin, dynamicValue, positions),
-    [basePin, dynamicValue, positions]
+    () => decomposePreview(basePin, dynamicValue, replacedIndex),
+    [basePin, dynamicValue, replacedIndex]
   )
 
-  const handleAlgorithmChange = (id: string) => {
-    setSelectedAlgorithmId(id)
-    appendTelemetry('algorithm_setup_algo_change', {
+  const handleReplacedIndexChange = (idx: number) => {
+    if (!isValidReplacedIndex(idx)) return
+    setReplacedIndex(idx)
+    appendTelemetry('algorithm_setup_replaced_index_change', {
       complexity,
-      algorithmId: id,
+      replacedIndex: idx,
     })
   }
 
-  const togglePosition = (idx: number) => {
-    setPositions((prev) => {
-      const isSelected = prev.includes(idx)
-      let next: number[]
-      if (isSelected) {
-        if (prev.length <= MIN_DYNAMIC_POSITIONS) return prev
-        next = prev.filter((p) => p !== idx)
-      } else {
-        if (prev.length >= MAX_DYNAMIC_POSITIONS) return prev
-        next = [...prev, idx]
-      }
-      next.sort((a, b) => a - b)
-      appendTelemetry('algorithm_setup_position_toggle', {
-        complexity,
-        positions: next,
-      })
-      return next
-    })
-  }
+  const replacedIndexValid = isValidReplacedIndex(replacedIndex)
 
-  const handleRetry = async () => {
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const list = await loadAlgorithms(complexity)
-      setAlgorithms(list)
-      if (list.length > 0 && !selectedAlgorithmId) {
-        setSelectedAlgorithmId(list[0].algorithmId)
-      }
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to load algorithms'
-      setLoadError(message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const positionsValid =
-    positions.length >= MIN_DYNAMIC_POSITIONS &&
-    positions.length <= MAX_DYNAMIC_POSITIONS
-
-  const canSubmit =
-    Boolean(selectedAlgorithmId) &&
-    !loading &&
-    !loadError &&
-    positionsValid &&
-    basePin.length === BASE_PIN_LENGTH
+  // The button is gated solely on the participant having picked a digit
+  // to replace; the rule itself is hardcoded to the phase.
+  const canSubmit = replacedIndexValid
 
   const handleSubmit = () => {
-    if (!canSubmit) return
+    if (!canSubmit || replacedIndex === null) return
     setConfiguration(configKey, {
-      algorithmId: selectedAlgorithmId,
-      dynamicPositions: positions,
+      algorithmType,
+      replacedIndex,
     })
     appendTelemetry('algorithm_setup_submit', {
       complexity,
-      algorithmId: selectedAlgorithmId,
-      dynamicPositions: positions,
+      algorithmType,
+      replacedIndex,
     })
     advanceStage()
   }
@@ -259,86 +194,34 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
         Configure your {COMPLEXITY_LABELS[complexity].toLowerCase()} rule
       </Typography>
       <Typography variant="body1" color="text.secondary">
-        Pick the dynamic element you want to use, then tap the digits of
-        your base PIN that should be replaced by it. The PIN length stays
-        at {BASE_PIN_LENGTH} digits — nothing is appended or prepended.
+        Review the rule assigned to this phase, then choose exactly one
+        digit of your base PIN to replace with it. The PIN length stays at{' '}
+        {BASE_PIN_LENGTH} digits — nothing is appended or prepended.
       </Typography>
 
       <Card variant="outlined" sx={{ borderRadius: 3 }}>
         <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
-          <FormControl component="fieldset" fullWidth>
-            <FormLabel sx={{ fontWeight: 600, mb: 1 }}>
-              Choose a rule
-            </FormLabel>
-            {loading && (
-              <Stack
-                direction="row"
-                spacing={1.5}
-                alignItems="center"
-                sx={{ py: 2 }}
-              >
-                <CircularProgress size={20} />
-                <Typography variant="body2" color="text.secondary">
-                  Loading available rules…
-                </Typography>
-              </Stack>
-            )}
-            {loadError && !loading && (
-              <Alert
-                severity="error"
-                sx={{ my: 1 }}
-                action={
-                  <Button color="inherit" size="small" onClick={handleRetry}>
-                    Retry
-                  </Button>
-                }
-              >
-                {loadError}
-              </Alert>
-            )}
-            {!loading && !loadError && algorithms.length === 0 && (
-              <Alert severity="info" sx={{ my: 1 }}>
-                No rules are configured for this complexity yet. Run{' '}
-                <code>npm run seed</code> in the server to populate them.
-              </Alert>
-            )}
-            {!loading && algorithms.length > 0 && (
-              <RadioGroup
-                value={selectedAlgorithmId}
-                onChange={(_, v) => handleAlgorithmChange(v)}
-              >
-                {algorithms.map((alg) => (
-                  <FormControlLabel
-                    key={alg.algorithmId}
-                    value={alg.algorithmId}
-                    control={<Radio />}
-                    sx={{
-                      alignItems: 'flex-start',
-                      mr: 0,
-                      '.MuiFormControlLabel-label': { mt: 0.5 },
-                    }}
-                    label={
-                      <Box>
-                        <Typography
-                          variant="body2"
-                          sx={{ fontWeight: 600, lineHeight: 1.3 }}
-                        >
-                          {algorithmShortLabel(alg.type)}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ mt: 0.25 }}
-                        >
-                          {alg.description}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                ))}
-              </RadioGroup>
-            )}
-          </FormControl>
+          <Typography
+            variant="overline"
+            color="text.secondary"
+            display="block"
+            sx={{ mb: 1 }}
+          >
+            Assigned Rule for this Phase
+          </Typography>
+          <Typography
+            variant="subtitle1"
+            sx={{ fontWeight: 600, lineHeight: 1.3 }}
+          >
+            {ruleInfo.title}
+          </Typography>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 1 }}
+          >
+            {ruleInfo.description}
+          </Typography>
         </CardContent>
       </Card>
 
@@ -356,23 +239,54 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
               sx={{ mb: 1.25 }}
             >
               <FormLabel sx={{ fontWeight: 600 }}>
-                Tap the digits that should be dynamic
+                Digit to replace
               </FormLabel>
               <Chip
-                label={`${positions.length} of ${BASE_PIN_LENGTH} dynamic`}
+                label={
+                  replacedIndex === null
+                    ? 'No digit selected'
+                    : `${ORDINAL_LABELS[replacedIndex]} digit selected`
+                }
                 size="small"
-                color="primary"
+                color={replacedIndex === null ? 'default' : 'primary'}
                 variant="outlined"
               />
             </Stack>
-            <PositionPicker
-              basePin={basePin}
-              selected={positions}
-              onToggle={togglePosition}
-            />
+            <RadioGroup
+              value={replacedIndex === null ? '' : String(replacedIndex)}
+              onChange={(_, v) => handleReplacedIndexChange(Number(v))}
+            >
+              {REPLACEABLE_INDICES.map((idx) => {
+                const baseDigit = basePin[idx] ?? '–'
+                return (
+                  <FormControlLabel
+                    key={idx}
+                    value={String(idx)}
+                    control={<Radio />}
+                    label={
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          Replace {ORDINAL_LABELS[idx]} Digit
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          (currently &lsquo;{baseDigit}&rsquo;)
+                        </Typography>
+                      </Stack>
+                    }
+                  />
+                )
+              })}
+            </RadioGroup>
             <FormHelperText>
-              Pick {MIN_DYNAMIC_POSITIONS}–{MAX_DYNAMIC_POSITIONS} positions.
-              Each selected digit is replaced by{' '}
+              Exactly one digit is replaced by{' '}
               {placeholderDescriptionForType(algorithmType)} when you unlock.
             </FormHelperText>
           </FormControl>
@@ -393,17 +307,25 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
           <PreviewRow
             label="Rule"
             segments={ruleSegments}
-            caption={`where ${placeholderForType(algorithmType)} = ${placeholderDescriptionForType(algorithmType)}`}
+            caption={
+              replacedIndex === null
+                ? 'Select a digit above to see how your base PIN changes.'
+                : `where ${placeholderForType(algorithmType)} = ${placeholderDescriptionForType(algorithmType)}`
+            }
           />
           <Box sx={{ height: 12 }} />
           <PreviewRow
             label="Right now"
             segments={liveSegments}
-            caption={`uses the current value (${dynamicValue})${
-              algorithmType === 'UNREAD_MESSAGES'
-                ? ` — sample of ${sampleUnreadCount} unread messages`
-                : ''
-            }`}
+            caption={
+              replacedIndex === null
+                ? 'No digit replaced yet — the live PIN equals your base PIN.'
+                : `uses the current value (${dynamicValue})${
+                    algorithmType === 'UNREAD_MESSAGES'
+                      ? ` — sample of ${sampleUnreadCount} unread messages`
+                      : ''
+                  }`
+            }
           />
         </CardContent>
       </Card>
@@ -417,94 +339,6 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
       >
         Save and start the {COMPLEXITY_LABELS[complexity].toLowerCase()} test
       </Button>
-    </Stack>
-  )
-}
-
-function algorithmShortLabel(
-  type: PredefinedAlgorithm['type'] | undefined
-): string {
-  switch (type) {
-    case 'MINUTE_DIGIT':
-      return 'Digit of the minute'
-    case 'UNREAD_MESSAGES':
-      return 'Unread messages digit'
-    case 'TIME_CROSS_SUM':
-      return 'Cross-sum of the time'
-    default:
-      return 'Algorithm'
-  }
-}
-
-function PositionPicker({
-  basePin,
-  selected,
-  onToggle,
-}: {
-  basePin: string
-  selected: number[]
-  onToggle: (idx: number) => void
-}) {
-  const slots = Array.from({ length: BASE_PIN_LENGTH }, (_, i) =>
-    basePin[i] ?? '–'
-  )
-  return (
-    <Stack direction="row" spacing={1.25} sx={{ flexWrap: 'wrap' }}>
-      {slots.map((digit, idx) => {
-        const isSelected = selected.includes(idx)
-        const atMax =
-          !isSelected && selected.length >= MAX_DYNAMIC_POSITIONS
-        const atMin =
-          isSelected && selected.length <= MIN_DYNAMIC_POSITIONS
-        const disabled = atMax || atMin
-        return (
-          <Stack key={idx} alignItems="center" spacing={0.5}>
-            <ButtonBase
-              onClick={() => onToggle(idx)}
-              focusRipple
-              disabled={disabled}
-              aria-pressed={isSelected}
-              aria-label={`Position ${idx + 1}: ${
-                isSelected ? 'dynamic' : 'static'
-              }`}
-              sx={{
-                width: 56,
-                height: 64,
-                borderRadius: 2,
-                border: '2px solid',
-                borderColor: isSelected
-                  ? 'rgba(100,181,246,0.85)'
-                  : 'divider',
-                bgcolor: isSelected
-                  ? 'rgba(100,181,246,0.18)'
-                  : 'action.hover',
-                color: isSelected ? '#64b5f6' : 'text.primary',
-                fontWeight: 600,
-                fontSize: 24,
-                fontVariantNumeric: 'tabular-nums',
-                transition:
-                  'background-color 120ms ease, border-color 120ms ease, transform 120ms ease',
-                '&:hover': {
-                  bgcolor: isSelected
-                    ? 'rgba(100,181,246,0.26)'
-                    : 'action.selected',
-                },
-                '&:active': { transform: 'scale(0.97)' },
-                '&.Mui-disabled': { opacity: 0.55 },
-              }}
-            >
-              {digit}
-            </ButtonBase>
-            <Typography
-              variant="caption"
-              color={isSelected ? 'primary.main' : 'text.secondary'}
-              sx={{ fontWeight: isSelected ? 600 : 400 }}
-            >
-              #{idx + 1}
-            </Typography>
-          </Stack>
-        )
-      })}
     </Stack>
   )
 }

@@ -22,8 +22,9 @@ import {
 } from '../hooks/useLockScreenTelemetry'
 import {
   calculateExpectedPin,
-  defaultPositionsForComplexity,
-  inferAlgorithmType,
+  defaultReplacedIndexForComplexity,
+  getCanonicalType,
+  isValidReplacedIndex,
   ResolvedConfiguration,
 } from '../lib/pinComposer'
 import { AlgorithmComplexity } from '../lib/stageFlow'
@@ -98,10 +99,8 @@ export function LockScreenView() {
     currentStage,
     mTurkId,
     configurations,
-    algorithmsByComplexity,
     appendTelemetry,
     advanceStage,
-    loadAlgorithms,
     setTempTelemetry,
   } = useStudyStore()
   const basePin = storedBasePin ?? ''
@@ -121,17 +120,18 @@ export function LockScreenView() {
     if (currentCondition === 'Baseline') return null
     const complexity = currentCondition as AlgorithmComplexity
     const config = configurations[configKeyForComplexity(complexity)]
-    const algorithm = config
-      ? algorithmsByComplexity[complexity]?.find(
-          (a) => a.algorithmId === config.algorithmId
-        )
-      : undefined
+    // The rule type is strictly predefined by phase; we honor the value
+    // saved during setup but fall back to the canonical mapping if a
+    // session ever lands here without a stored configuration.
+    const algorithmType = config?.algorithmType ?? getCanonicalType(complexity)
+    const replacedIndex = isValidReplacedIndex(config?.replacedIndex)
+      ? (config!.replacedIndex as number)
+      : defaultReplacedIndexForComplexity(complexity)
     return {
-      algorithmType: inferAlgorithmType(algorithm, complexity),
-      dynamicPositions:
-        config?.dynamicPositions ?? defaultPositionsForComplexity(complexity),
+      algorithmType,
+      replacedIndex,
     }
-  }, [currentCondition, configurations, algorithmsByComplexity])
+  }, [currentCondition, configurations])
 
   const expectedPin = useMemo(
     () =>
@@ -153,16 +153,6 @@ export function LockScreenView() {
     const t = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(t)
   }, [appendTelemetry, basePin, currentCondition, unreadCount])
-
-  useEffect(() => {
-    if (currentCondition === 'Baseline') return
-    const complexity = currentCondition as AlgorithmComplexity
-    if ((algorithmsByComplexity[complexity]?.length ?? 0) > 0) return
-    loadAlgorithms(complexity).catch(() => {
-      // Lock screen falls back to canonical algorithm types if the cache is empty,
-      // so a fetch failure here is non-fatal.
-    })
-  }, [currentCondition, algorithmsByComplexity, loadAlgorithms])
 
   useEffect(() => {
     return () => {

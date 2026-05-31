@@ -15,21 +15,26 @@ import {
   nextStage,
   StudyStage,
 } from '../lib/stageFlow'
+import type { AlgorithmType } from '../lib/pinComposer'
 
 export type { StudyStage } from '../lib/stageFlow'
 
 export type PinCondition = 'Baseline' | 'Low' | 'Medium' | 'High'
 
-/**
- * Indices (0-based) of the base PIN digits that are replaced by the
- * algorithm's dynamic value. Length is constrained to 1..3 by
- * `pinComposer.MIN_DYNAMIC_POSITIONS` / `MAX_DYNAMIC_POSITIONS`.
- */
-export type DynamicPositions = number[]
-
 export type AlgorithmConfiguration = {
-  algorithmId: string
-  dynamicPositions: DynamicPositions
+  /**
+   * The dynamic-value rule applied during the test phase. Strictly
+   * predefined by complexity (Low → MINUTE_DIGIT, Medium → UNREAD_MESSAGES,
+   * High → TIME_CROSS_SUM); the participant no longer chooses it.
+   */
+  algorithmType: AlgorithmType
+  /**
+   * 0-based index of the single base-PIN digit that is replaced by the
+   * algorithm's dynamic value. Always in `[0, BASE_PIN_LENGTH - 1]`
+   * (validated by `pinComposer.isValidReplacedIndex`). Exactly one digit
+   * is replaced — nothing is appended or prepended.
+   */
+  replacedIndex: number
 }
 
 export type Configurations = {

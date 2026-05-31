@@ -16,17 +16,18 @@ export type PreviewSegment = {
   isDynamic: boolean
 }
 
-/**
- * Indices (0-based) of the base PIN digits that are replaced by the
- * dynamic value. Always sorted ascending, unique, length in [1, 3], and
- * each value in [0, basePin.length - 1]. We cap at 3 so at least one
- * static base digit always remains in the live PIN.
- */
-export type DynamicPositions = number[]
-
-export const MIN_DYNAMIC_POSITIONS = 1
-export const MAX_DYNAMIC_POSITIONS = 3
 export const BASE_PIN_LENGTH = 4
+
+/**
+ * The fixed set of base-PIN indices a participant can choose to replace
+ * with the dynamic value. Exactly one of these is selected per
+ * algorithmic condition — the PIN length always stays at
+ * `BASE_PIN_LENGTH` and only that single digit becomes dynamic.
+ */
+export const REPLACEABLE_INDICES: readonly number[] = Array.from(
+  { length: BASE_PIN_LENGTH },
+  (_, i) => i
+)
 
 const CANONICAL_TYPE_BY_COMPLEXITY: Record<AlgorithmComplexity, AlgorithmType> =
   {
@@ -77,7 +78,7 @@ export function timeCrossSum(d: Date): number {
 
 /**
  * Every algorithm collapses to a single 0-9 digit. That digit is then
- * written into each chosen position of the base PIN (see
+ * written into the chosen position of the base PIN (see
  * `applyReplacement`). For the cross-sum we take the units digit of the
  * total so the participant always types one digit, regardless of whether
  * the raw sum has one or two digits.
@@ -96,40 +97,44 @@ export function computeDynamicValue(
   }
 }
 
-function normalizePositions(
-  positions: DynamicPositions,
-  pinLength: number
-): number[] {
-  const filtered = positions.filter(
-    (p) => Number.isInteger(p) && p >= 0 && p < pinLength
+export function isValidReplacedIndex(
+  index: number | null | undefined,
+  pinLength = BASE_PIN_LENGTH
+): index is number {
+  return (
+    typeof index === 'number' &&
+    Number.isInteger(index) &&
+    index >= 0 &&
+    index < pinLength
   )
-  return Array.from(new Set(filtered)).sort((a, b) => a - b)
 }
 
 /**
- * Replace each position in `positions` with `dynamicValue`. The base PIN
- * length is preserved — nothing is appended or prepended.
+ * Replace exactly the character at `replacedIndex` of `basePin` with
+ * `dynamicValue`. The base PIN length is preserved — nothing is appended
+ * or prepended. If `replacedIndex` is invalid the base PIN is returned
+ * unchanged (benign fallback for unexpected states).
  */
 export function applyReplacement(
   basePin: string,
   dynamicValue: string,
-  positions: DynamicPositions
+  replacedIndex: number
 ): string {
-  const chars = basePin.split('')
-  for (const idx of normalizePositions(positions, chars.length)) {
-    chars[idx] = dynamicValue
-  }
-  return chars.join('')
+  if (!isValidReplacedIndex(replacedIndex, basePin.length)) return basePin
+  return (
+    basePin.substring(0, replacedIndex) +
+    dynamicValue +
+    basePin.substring(replacedIndex + 1)
+  )
 }
 
 export function decomposePreview(
   basePin: string,
   dynamicValue: string,
-  positions: DynamicPositions
+  replacedIndex: number | null
 ): PreviewSegment[] {
-  const dynSet = new Set(normalizePositions(positions, basePin.length))
   return basePin.split('').map((value, idx) => {
-    const isDynamic = dynSet.has(idx)
+    const isDynamic = idx === replacedIndex
     return {
       value: isDynamic ? dynamicValue : value,
       isDynamic,
@@ -144,38 +149,23 @@ export function getCanonicalType(
 }
 
 /**
- * Sensible defaults if the participant never opened the setup screen for
- * a given complexity. We scale the number of dynamic positions with the
- * complexity (Low=1, Medium=2, High=3), choosing the trailing N digits so
- * the lock screen has well-defined behavior even in fallback paths.
+ * Fallback index used only when something lands on the lock screen
+ * without an explicit configuration (e.g. dev navigation, restored
+ * session before the participant picked an index). We default to the
+ * trailing digit for every complexity so the lock screen always has
+ * well-defined behavior. The parameter is reserved for future
+ * complexity-specific defaults.
  */
-export function defaultPositionsForComplexity(
+export function defaultReplacedIndexForComplexity(
   complexity: AlgorithmComplexity
-): DynamicPositions {
-  const count =
-    complexity === 'High' ? 3 : complexity === 'Medium' ? 2 : 1
-  const positions: number[] = []
-  for (let i = BASE_PIN_LENGTH - count; i < BASE_PIN_LENGTH; i++) {
-    positions.push(i)
-  }
-  return positions
-}
-
-export function isValidDynamicPositions(
-  positions: DynamicPositions,
-  pinLength = BASE_PIN_LENGTH
-): boolean {
-  const normalized = normalizePositions(positions, pinLength)
-  return (
-    normalized.length === positions.length &&
-    normalized.length >= MIN_DYNAMIC_POSITIONS &&
-    normalized.length <= MAX_DYNAMIC_POSITIONS
-  )
+): number {
+  void complexity
+  return BASE_PIN_LENGTH - 1
 }
 
 export type ResolvedConfiguration = {
   algorithmType: AlgorithmType
-  dynamicPositions: DynamicPositions
+  replacedIndex: number
 }
 
 /**
@@ -185,8 +175,8 @@ export type ResolvedConfiguration = {
  *  - For BASELINE_TEST the expected PIN is just `basePin`.
  *  - For LOW_TEST / MED_TEST / HIGH_TEST the dynamic value is computed from
  *    `currentConfig.algorithmType` against the live lock-screen context, then
- *    written into each position in `currentConfig.dynamicPositions`. The PIN
- *    length is preserved.
+ *    written into the single position `currentConfig.replacedIndex`. The
+ *    PIN length is preserved.
  *  - For any other stage (or a missing config) it returns `basePin` as a
  *    benign fallback so callers never get an exception in unexpected states.
  */
@@ -206,5 +196,11 @@ export function calculateExpectedPin(
   }
   if (!currentConfig) return basePin
   const dynamicValue = computeDynamicValue(currentConfig.algorithmType, ctx)
-  return applyReplacement(basePin, dynamicValue, currentConfig.dynamicPositions)
+  const index = currentConfig.replacedIndex
+  if (!isValidReplacedIndex(index, basePin.length)) return basePin
+  return (
+    basePin.substring(0, index) +
+    dynamicValue +
+    basePin.substring(index + 1)
+  )
 }

@@ -23,17 +23,17 @@ const EXAMPLES: {
   {
     icon: <AccessTimeRounded fontSize="small" />,
     title: 'Time-based',
-    body: 'The units digit of the current minute replaces a digit of your PIN. If the screen shows 14:27, base PIN 1234 with position #4 dynamic becomes 1237.',
+    body: 'The units digit of the current minute replaces one digit of your PIN. If the screen shows 14:27, base PIN 1234 with the 4th digit replaced becomes 1237.',
   },
   {
     icon: <ChatBubbleRounded fontSize="small" />,
     title: 'Notification-based',
-    body: 'The units digit of the unread message count replaces a digit. With 4 unread, base PIN 1234 and positions #3 and #4 dynamic becomes 1244.',
+    body: 'The units digit of the unread message count replaces one digit. With 4 unread, base PIN 1234 with the 3rd digit replaced becomes 1244.',
   },
   {
     icon: <CalculateRounded fontSize="small" />,
     title: 'Cross-sum',
-    body: 'The units digit of the cross-sum of the time replaces a digit. At 12:24, 1+2+2+4 = 9, so base PIN 1234 with position #2 dynamic becomes 1934.',
+    body: 'The units digit of the cross-sum of the time replaces one digit. At 12:24, 1+2+2+4 = 9, so base PIN 1234 with the 2nd digit replaced becomes 1934.',
   },
 ]
 
@@ -66,7 +66,7 @@ export function AlgoIntroView() {
       </Typography>
       <Typography variant="body1" color="text.secondary">
         For the next three unlocks your passcode is no longer fully static.
-        Your PIN stays 4 digits long, but 1 to 3 of those digits are
+        Your PIN stays 4 digits long, but exactly one of those digits is
         replaced by a small dynamic element you can read directly off the
         lock screen.
       </Typography>
@@ -78,7 +78,7 @@ export function AlgoIntroView() {
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
             On each upcoming setup screen you will pick a rule (the dynamic
-            element) and tap which 1, 2, or 3 of your 4 base-PIN digits the
+            element) and choose which one of your 4 base-PIN digits the
             rule should replace. The total PIN length stays at 4 digits.
           </Typography>
 

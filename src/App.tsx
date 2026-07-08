@@ -14,11 +14,12 @@ import { useStudyStore } from './store/studyStore'
 import { studyTheme } from './theme'
 import { AlgoIntroView } from './views/AlgoIntroView'
 import { AlgorithmSetupView } from './views/AlgorithmSetupView'
+import { CompletionView } from './views/CompletionView'
 import { LockScreenView } from './views/LockScreenView'
-import { NasaTlxView } from './views/NasaTlxView'
 import { OnboardingView } from './views/OnboardingView'
 import { StaticSetupView } from './views/StaticSetupView'
 import { SusSurveyView } from './views/SusSurveyView'
+import { TamSurveyView } from './views/TamSurveyView'
 
 function isValidStage(v: string | null): v is StudyStage {
   if (!v) return false
@@ -67,27 +68,31 @@ function AppRoutes() {
           element={<StaticSetupView />}
         />
         <Route path={STAGE_ROUTES.BASELINE_TEST} element={<LockScreenView />} />
-        <Route path={STAGE_ROUTES.BASELINE_TLX} element={<NasaTlxView />} />
+        <Route path={STAGE_ROUTES.BASELINE_TAM} element={<TamSurveyView />} />
+        <Route path={STAGE_ROUTES.BASELINE_SUS} element={<SusSurveyView />} />
         <Route path={STAGE_ROUTES.ALGO_INTRO} element={<AlgoIntroView />} />
         <Route
           path={STAGE_ROUTES.LOW_SETUP}
           element={<AlgorithmSetupView complexity="Low" />}
         />
         <Route path={STAGE_ROUTES.LOW_TEST} element={<LockScreenView />} />
-        <Route path={STAGE_ROUTES.LOW_TLX} element={<NasaTlxView />} />
+        <Route path={STAGE_ROUTES.LOW_TAM} element={<TamSurveyView />} />
+        <Route path={STAGE_ROUTES.LOW_SUS} element={<SusSurveyView />} />
         <Route
           path={STAGE_ROUTES.MED_SETUP}
           element={<AlgorithmSetupView complexity="Medium" />}
         />
         <Route path={STAGE_ROUTES.MED_TEST} element={<LockScreenView />} />
-        <Route path={STAGE_ROUTES.MED_TLX} element={<NasaTlxView />} />
+        <Route path={STAGE_ROUTES.MED_TAM} element={<TamSurveyView />} />
+        <Route path={STAGE_ROUTES.MED_SUS} element={<SusSurveyView />} />
         <Route
           path={STAGE_ROUTES.HIGH_SETUP}
           element={<AlgorithmSetupView complexity="High" />}
         />
         <Route path={STAGE_ROUTES.HIGH_TEST} element={<LockScreenView />} />
-        <Route path={STAGE_ROUTES.HIGH_TLX} element={<NasaTlxView />} />
-        <Route path={STAGE_ROUTES.FINAL_SURVEY} element={<SusSurveyView />} />
+        <Route path={STAGE_ROUTES.HIGH_TAM} element={<TamSurveyView />} />
+        <Route path={STAGE_ROUTES.HIGH_SUS} element={<SusSurveyView />} />
+        <Route path={STAGE_ROUTES.COMPLETION} element={<CompletionView />} />
         <Route path="*" element={<Navigate to={STAGE_ROUTES.ONBOARDING} replace />} />
       </Routes>
     </>

@@ -182,8 +182,8 @@ export function LockScreenView() {
       })
       if (ok) {
         // Snapshot the live store value so the count we persist matches
-        // the count we ship to the TLX payload, even if the store mutates
-        // mid-render.
+        // the count we later ship on the /api/telemetry payload, even if
+        // the store mutates mid-render.
         const phaseReturnCount = currentPhaseReturnCount
         const submission = telemetry.recordSuccess({
           mTurkId,
@@ -199,10 +199,11 @@ export function LockScreenView() {
           timeToFirstTouch: submission.timeToFirstTouch,
         })
         // The lock screen no longer talks to /api/telemetry directly. We
-        // compile just the performance metrics the TLX view needs and
-        // stash them in tempTelemetry; the TLX view merges in mTurkId,
-        // condition, and the NASA-TLX ratings before POSTing. The richer
-        // localStorage record was already written by `recordSuccess` above.
+        // compile just the performance metrics the survey views need and
+        // stash them in tempTelemetry; the TAM view then appends `tam`,
+        // and the SUS view appends `sus` and merges in mTurkId + condition
+        // before POSTing. The richer localStorage record was already
+        // written by `recordSuccess` above.
         const metrics: LockScreenMetrics = {
           renderTimestamp: submission.renderTimestamp,
           timeToFirstTouch: submission.timeToFirstTouch,
@@ -215,9 +216,10 @@ export function LockScreenView() {
         setTempTelemetry(metrics)
         setShowSuccess(true)
         successTimerRef.current = window.setTimeout(() => {
-          // STAGE_ORDER pairs every *_TEST stage with its *_TLX successor, so
-          // advancing here lands the participant on the matching TLX phase
-          // (e.g. LOW_TEST -> LOW_TLX, MED_TEST -> MED_TLX).
+          // STAGE_ORDER pairs every *_TEST stage with its *_TAM successor,
+          // so advancing here lands the participant on the matching TAM
+          // survey (e.g. LOW_TEST -> LOW_TAM, MED_TEST -> MED_TAM). The
+          // TAM view then advances to *_SUS, which POSTs telemetry.
           advanceStage()
         }, SUCCESS_NAVIGATE_DELAY_MS)
       } else {

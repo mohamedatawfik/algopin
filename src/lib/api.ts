@@ -43,21 +43,54 @@ export type TelemetryPostResponse = {
   createdAt?: string
 }
 
-/** NASA-TLX ratings, one number per dimension (1..7 or 1..21). */
-export type NasaTlxRatings = {
-  mentalDemand: number
-  physicalDemand: number
-  temporalDemand: number
-  performance: number
-  effort: number
-  frustration: number
+/**
+ * Number of items and 1..7 Likert bounds for the Technology-Acceptance-Model
+ * questionnaire administered immediately after every `*_TEST` phase.
+ */
+export const TAM_ITEM_COUNT = 5
+export const TAM_MIN_VALUE = 1
+export const TAM_MAX_VALUE = 7
+
+/**
+ * Named-field 1..7 Likert answers to the five TAM items, in the order
+ * rendered by `TamSurveyView`. Persisted verbatim on the `tam` subdoc of
+ * a `telemetrylogs` document.
+ */
+export type TamAnswers = {
+  item1: number
+  item2: number
+  item3: number
+  item4: number
+  item5: number
+}
+
+/**
+ * Named-field 1..5 Likert answers to the ten per-condition SUS items, in
+ * the order rendered by `SusSurveyView`. Persisted verbatim on the `sus`
+ * subdoc of a `telemetrylogs` document. Distinct from the (now-legacy)
+ * Day-1 end-of-study SUS `SusAnswers` array wired through
+ * `finalizeParticipant`.
+ */
+export type SusAnswersPerCondition = {
+  item1: number
+  item2: number
+  item3: number
+  item4: number
+  item5: number
+  item6: number
+  item7: number
+  item8: number
+  item9: number
+  item10: number
 }
 
 /**
  * The exact JSON body POSTed to /api/telemetry once a condition is fully
- * complete (lock screen + TLX). Identity (`mTurkId`, `condition`) is supplied
- * by the TLX view from the global store; lock-screen metrics come from
- * `tempTelemetry`; ratings come from the slider state.
+ * complete (lock screen + TAM + SUS). Identity (`mTurkId`, `condition`) is
+ * supplied by `SusSurveyView` from the global store; lock-screen metrics
+ * were written to `tempTelemetry` at unlock success; `tam` was appended by
+ * `TamSurveyView`; `sus` is appended by `SusSurveyView` right before this
+ * POST is dispatched.
  */
 export type TelemetrySubmission = {
   mTurkId: string
@@ -75,7 +108,8 @@ export type TelemetrySubmission = {
   returnCount: number
   submittedErrors: string[]
   keystrokeLog: Keystroke[]
-  nasaTlx: NasaTlxRatings
+  tam: TamAnswers
+  sus: SusAnswersPerCondition
 }
 
 export type StudyPhase = 'day1' | 'day7'

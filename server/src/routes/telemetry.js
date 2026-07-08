@@ -2,30 +2,62 @@ import { Router } from 'express'
 
 import TelemetryLog, {
   CONDITIONS,
-  NASA_TLX_FIELDS,
-  NASA_TLX_MAX,
-  NASA_TLX_MIN,
+  SUS_FIELDS,
+  SUS_MAX,
+  SUS_MIN,
+  TAM_FIELDS,
+  TAM_MAX,
+  TAM_MIN,
 } from '../models/TelemetryLog.js'
 
 const router = Router()
 
-function validateNasaTlx(raw) {
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { ok: false, error: 'nasaTlx must be an object with the six TLX ratings' }
+/**
+ * Normalize an incoming survey payload into the canonical named-field
+ * object shape ({ item1, item2, ... }). We accept two wire formats so the
+ * frontend can send whichever is more convenient:
+ *
+ *   1. Canonical object: { item1: 4, item2: 6, ... }
+ *   2. Ordered array:    [4, 6, ...]   -> zipped against `fieldNames`
+ *
+ * Any other shape returns null so the caller can bail with a 400.
+ */
+function normalizeSurveyPayload(raw, fieldNames) {
+  if (Array.isArray(raw)) {
+    if (raw.length !== fieldNames.length) return null
+    const obj = {}
+    for (let i = 0; i < fieldNames.length; i += 1) {
+      obj[fieldNames[i]] = raw[i]
+    }
+    return obj
+  }
+  if (raw !== null && typeof raw === 'object') {
+    return raw
+  }
+  return null
+}
+
+function validateNamedLikertBlock(raw, { name, fieldNames, min, max }) {
+  const normalized = normalizeSurveyPayload(raw, fieldNames)
+  if (!normalized) {
+    return {
+      ok: false,
+      error: `${name} must be an object with ${fieldNames.length} numeric fields (or an array of ${fieldNames.length} numbers)`,
+    }
   }
   const cleaned = {}
-  for (const field of NASA_TLX_FIELDS) {
-    const value = raw[field]
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
+  for (const field of fieldNames) {
+    const value = normalized[field]
+    if (!Number.isInteger(value)) {
       return {
         ok: false,
-        error: `nasaTlx.${field} must be a number`,
+        error: `${name}.${field} must be an integer`,
       }
     }
-    if (value < NASA_TLX_MIN || value > NASA_TLX_MAX) {
+    if (value < min || value > max) {
       return {
         ok: false,
-        error: `nasaTlx.${field} must be between ${NASA_TLX_MIN} and ${NASA_TLX_MAX}`,
+        error: `${name}.${field} must be between ${min} and ${max}`,
       }
     }
     cleaned[field] = value
@@ -58,9 +90,24 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'totalAuthTime must be a number' })
     }
 
-    const tlx = validateNasaTlx(body.nasaTlx)
-    if (!tlx.ok) {
-      return res.status(400).json({ error: tlx.error })
+    const tam = validateNamedLikertBlock(body.tam, {
+      name: 'tam',
+      fieldNames: TAM_FIELDS,
+      min: TAM_MIN,
+      max: TAM_MAX,
+    })
+    if (!tam.ok) {
+      return res.status(400).json({ error: tam.error })
+    }
+
+    const sus = validateNamedLikertBlock(body.sus, {
+      name: 'sus',
+      fieldNames: SUS_FIELDS,
+      min: SUS_MIN,
+      max: SUS_MAX,
+    })
+    if (!sus.ok) {
+      return res.status(400).json({ error: sus.error })
     }
 
     const doc = await TelemetryLog.create({
@@ -82,7 +129,8 @@ router.post('/', async (req, res, next) => {
         ? body.submittedErrors
         : [],
       keystrokeLog: Array.isArray(body.keystrokeLog) ? body.keystrokeLog : [],
-      nasaTlx: tlx.value,
+      tam: tam.value,
+      sus: sus.value,
       completedAt: body.completedAt,
       schemaVersion: body.schemaVersion,
     })

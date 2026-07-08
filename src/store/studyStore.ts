@@ -7,12 +7,14 @@ import {
   PredefinedAlgorithm,
   StudyPhase,
   SusAnswers,
+  SusAnswersPerCondition,
+  TamAnswers,
   TelemetrySubmission,
 } from '../lib/api'
 import {
   AlgorithmComplexity,
   conditionForStage,
-  isTlxStage,
+  isSusStage,
   nextStage,
   StudyStage,
 } from '../lib/stageFlow'
@@ -59,6 +61,28 @@ export type AlgorithmsCache = Partial<
 
 import type { LockScreenMetrics } from '../hooks/useLockScreenTelemetry'
 
+/**
+ * The per-condition telemetry accumulator held in `tempTelemetry`. It
+ * starts as a full `LockScreenMetrics` snapshot written by
+ * `LockScreenView` at unlock-success time, then grows by one nested
+ * survey subdoc each time the participant submits a survey for the same
+ * condition:
+ *
+ *   TEST -> writes LockScreenMetrics
+ *   TAM  -> appends `tam` (named-field subdoc: item1..item5, each 1..7)
+ *   SUS  -> appends `sus` (named-field subdoc: item1..item10, each 1..5)
+ *
+ * `SusSurveyView` then merges `mTurkId` + `condition` into this
+ * accumulator, POSTs the combined payload to /api/telemetry, and only on
+ * a successful write calls `clearTempTelemetry()`. The outer `Partial<>`
+ * exists so a defensive `SusSurveyView` retry doesn't require a full
+ * `LockScreenMetrics` snapshot to be present.
+ */
+export type TempTelemetryPayload = Partial<LockScreenMetrics> & {
+  tam?: TamAnswers
+  sus?: SusAnswersPerCondition
+}
+
 type StudyState = {
   mTurkId: string
   currentStage: StudyStage
@@ -68,22 +92,21 @@ type StudyState = {
   algorithmsByComplexity: AlgorithmsCache
   telemetry: TelemetryEntry[]
   /**
-   * Holds the six lock-screen metrics for the most recently completed
-   * `*_TEST` condition while the participant works through the corresponding
-   * `*_TLX` survey. The TLX view merges these metrics with `mTurkId`,
-   * `condition`, and the gathered `nasaTlx` ratings, then POSTs the combined
-   * payload to /api/telemetry. The slot is cleared only after that POST
-   * succeeds.
+   * The per-condition telemetry accumulator (see `TempTelemetryPayload`).
+   * Written first by `LockScreenView` at unlock success, then extended
+   * with `tam` by `TamSurveyView` and `sus` by `SusSurveyView`. The `*_SUS`
+   * submission POSTs the merged payload; the slot is cleared only after
+   * that POST succeeds.
    */
-  tempTelemetry: LockScreenMetrics | null
+  tempTelemetry: TempTelemetryPayload | null
   /**
    * Count of "Return" presses on the lock screen during the *current*
    * complexity phase. Incremented from `LockScreenView` and surfaced as
    * `returnCount` on the telemetry payload at unlock-success time. The
    * counter persists across the SETUP ↔ TEST bounce within a phase (e.g.
    * LOW_TEST → LOW_SETUP → LOW_TEST keeps accumulating) and only resets to
-   * zero when the participant finishes the matching `*_TLX` survey and the
-   * stage advances to the next phase (see `advanceStage`).
+   * zero when the participant finishes the matching `*_SUS` survey and
+   * the stage advances into the next phase (see `advanceStage`).
    */
   currentPhaseReturnCount: number
   /**
@@ -113,7 +136,7 @@ type StudyState = {
     config: AlgorithmConfiguration | null
   ) => void
   appendTelemetry: (event: string, payload?: Record<string, unknown>) => void
-  setTempTelemetry: (metrics: LockScreenMetrics | null) => void
+  setTempTelemetry: (payload: TempTelemetryPayload | null) => void
   clearTempTelemetry: () => void
   /**
    * Increment `currentPhaseReturnCount` by one. Called by `LockScreenView`
@@ -176,7 +199,7 @@ const initialState = {
   configurations: initialConfigurations,
   algorithmsByComplexity: {} as AlgorithmsCache,
   telemetry: [] as TelemetryEntry[],
-  tempTelemetry: null as LockScreenMetrics | null,
+  tempTelemetry: null as TempTelemetryPayload | null,
   currentPhaseReturnCount: 0,
   susAnswers: null as SusAnswers | null,
   phase1FinalizedAt: null as string | null,
@@ -209,13 +232,14 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       currentStage: next,
       currentCondition: conditionForStage(next) ?? get().currentCondition,
     }
-    // Only reset the return counter when the participant finishes a TLX
-    // survey and crosses into a brand-new phase. Bouncing between *_SETUP
-    // and *_TEST via the lock-screen "Return" button uses setStage(), which
-    // intentionally leaves this counter untouched so a single phase's
-    // working-memory failures accumulate across multiple back-and-forth
-    // trips.
-    if (isTlxStage(current)) {
+    // Only reset the return counter when the participant finishes the
+    // SUS survey for the current condition, since that's the moment its
+    // telemetry document is POSTed and the phase officially closes.
+    // Bouncing between *_SETUP and *_TEST via the lock-screen "Return"
+    // button uses setStage(), which intentionally leaves this counter
+    // untouched so a single phase's working-memory failures accumulate
+    // across multiple back-and-forth trips.
+    if (isSusStage(current)) {
       updates.currentPhaseReturnCount = 0
     }
     set(updates)

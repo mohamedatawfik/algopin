@@ -16,49 +16,40 @@ import { useMemo, useState } from 'react'
 import { useStudyStore } from '../store/studyStore'
 
 /**
- * Standard 10-item System Usability Scale (Brooke, 1996), reworded so each
- * statement refers to "this passcode method" — the specific complexity
- * condition the participant has just tested — instead of a generic system.
- * Items 1, 3, 5, 7, 9 are positively worded; items 2, 4, 6, 8, 10 are
- * negatively worded. Raw 1..5 answers are stored verbatim; the analyst
- * inverts and rescales to the canonical 0..100 SUS score at read time.
+ * Five Technology-Acceptance-Model style items rated after each specific
+ * complexity rule the participant has just tested. Items 1–2 probe
+ * perceived ease of use, items 3–5 probe perceived usefulness / intent to
+ * use. The raw 1..7 answer per item is stored verbatim so the analyst can
+ * decide how to combine them.
  */
-const SUS_ITEMS = [
-  'I think that I would like to use this passcode method frequently.',
-  'I found this passcode method unnecessarily complex.',
-  'I thought this passcode method was easy to use.',
-  'I think that I would need the support of a technical person to be able to use this passcode method.',
-  'I found the various steps for using this passcode method were well integrated.',
-  'I thought there was too much inconsistency in this passcode method.',
-  'I would imagine that most people would learn to use this passcode method very quickly.',
-  'I found this passcode method very cumbersome to use.',
-  'I felt very confident using this passcode method.',
-  'I needed to learn a lot of things before I could get going with this passcode method.',
+const TAM_ITEMS = [
+  'Calculating and entering the passcode using this specific rule was easy for me.',
+  'The mental math required for this specific rule was clear and understandable.',
+  'Using this level of mathematical complexity would effectively protect my smartphone from onlookers.',
+  'I would be willing to use this specific calculation rule on my personal smartphone every day.',
+  'I could calculate and enter this passcode quickly enough for real-world daily use.',
 ]
 
 const SCALE_MIN = 1
-const SCALE_MAX = 5
+const SCALE_MAX = 7
 const SCALE_VALUES = Array.from(
   { length: SCALE_MAX - SCALE_MIN + 1 },
   (_, i) => SCALE_MIN + i
 )
 
-const ITEM_COUNT = SUS_ITEMS.length
+const ITEM_COUNT = TAM_ITEMS.length
 
 function buildEmptyAnswers() {
   return Array.from({ length: ITEM_COUNT }, () => null)
 }
 
-export function SusSurveyView() {
-  const mTurkId = useStudyStore((s) => s.mTurkId)
-  const currentStage = useStudyStore((s) => s.currentStage)
-  const currentCondition = useStudyStore((s) => s.currentCondition)
+export function TamSurveyView() {
   const tempTelemetry = useStudyStore((s) => s.tempTelemetry)
   const setTempTelemetry = useStudyStore((s) => s.setTempTelemetry)
-  const clearTempTelemetry = useStudyStore((s) => s.clearTempTelemetry)
-  const submitTelemetry = useStudyStore((s) => s.submitTelemetry)
   const advanceStage = useStudyStore((s) => s.advanceStage)
   const appendTelemetry = useStudyStore((s) => s.appendTelemetry)
+  const currentStage = useStudyStore((s) => s.currentStage)
+  const currentCondition = useStudyStore((s) => s.currentCondition)
 
   const [answers, setAnswers] = useState(buildEmptyAnswers)
   const [submitting, setSubmitting] = useState(false)
@@ -80,26 +71,20 @@ export function SusSurveyView() {
     if (errorMessage) setErrorMessage(null)
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (submitting) return
     if (!allAnswered) {
       setErrorMessage(
-        `Please answer all ${ITEM_COUNT} items before submitting.`
-      )
-      return
-    }
-    if (!mTurkId) {
-      setErrorMessage(
-        'Your MTurk Worker ID is missing; please reload the study from the original link.'
+        `Please answer all ${ITEM_COUNT} items before continuing.`
       )
       return
     }
 
-    // Ship the SUS answers to the store in the canonical named-field
-    // shape the backend schema expects (`sus.item1..item10`). Doing the
-    // array -> object mapping here means the wire payload below can
-    // spread `tempTelemetry` verbatim.
-    const sus = answers.reduce((acc, value, idx) => {
+    // Ship the TAM answers to the store in the canonical named-field
+    // shape the backend schema expects (`tam.item1..item5`). Doing the
+    // array -> object mapping once here means the SUS view can send
+    // `tempTelemetry` verbatim without any downstream reshaping.
+    const tam = answers.reduce((acc, value, idx) => {
       acc[`item${idx + 1}`] = Number(value)
       return acc
     }, {})
@@ -107,56 +92,18 @@ export function SusSurveyView() {
     setSubmitting(true)
     setErrorMessage(null)
 
-    // 1) Append the SUS responses to the running per-condition
-    //    tempTelemetry slot. This keeps the store in sync with what we're
-    //    about to POST — and, if the POST fails, gives us the SUS answers
-    //    back on retry without asking the participant to re-answer.
-    const nextTemp = { ...(tempTelemetry ?? {}), sus }
-    setTempTelemetry(nextTemp)
+    // Merge the TAM subdoc into the running `tempTelemetry` slot so the
+    // matching `*_SUS` view can POST everything (lock-screen metrics +
+    // TAM + SUS) as a single wire payload. Spreading a null tempTelemetry
+    // is safe — it produces `{}`.
+    setTempTelemetry({ ...(tempTelemetry ?? {}), tam })
 
-    appendTelemetry('sus_submit', {
+    appendTelemetry('tam_submit', {
       stage: currentStage,
       condition: currentCondition,
-      sus,
+      tam,
     })
 
-    // 2) Build the wire payload and POST it. Identity fields (`mTurkId`,
-    //    `condition`) come from the store; every other field —
-    //    lock-screen metrics, `tam`, `sus` — is whatever has accumulated
-    //    in `tempTelemetry` up to this point.
-    const submission = {
-      mTurkId,
-      condition: currentCondition,
-      ...nextTemp,
-    }
-    const res = await submitTelemetry(submission)
-
-    if (!res.ok) {
-      appendTelemetry('telemetry_post_failed', {
-        stage: currentStage,
-        condition: currentCondition,
-        error: res.error,
-      })
-      setErrorMessage(
-        res.error ?? 'Could not save your responses. Please try again.'
-      )
-      setSubmitting(false)
-      return
-    }
-
-    // 3) Only clear the buffer after the write succeeds, then advance.
-    appendTelemetry('telemetry_post_ok', {
-      stage: currentStage,
-      condition: currentCondition,
-      id: res.id,
-    })
-    clearTempTelemetry()
-
-    // 4) Hand control back to stageFlow. When STAGE_ORDER contains the
-    //    new `*_SUS` stages followed by the next `*_SETUP` (or the
-    //    terminal `COMPLETION` stage after HIGH_SUS), `advanceStage()`
-    //    will land the participant exactly where the study protocol
-    //    prescribes without this component having to know the mapping.
     advanceStage()
     setSubmitting(false)
   }
@@ -165,13 +112,12 @@ export function SusSurveyView() {
     <Stack spacing={3} sx={{ maxWidth: 720, mx: 'auto', py: 2 }}>
       <Stack spacing={1}>
         <Typography variant="h5" component="h1">
-          System Usability Scale: Please rate your experience with this
-          passcode method.
+          Please evaluate the specific rule you just tested.
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          For each statement below, select the response that best describes
-          your reaction to the passcode method you just used. There are no
-          right or wrong answers — please rate every item.
+          For each statement below, choose the point on the scale that best
+          matches your experience with the calculation rule you just used.
+          There are no right or wrong answers — please rate every item.
         </Typography>
         <Typography
           variant="caption"
@@ -183,7 +129,7 @@ export function SusSurveyView() {
       </Stack>
 
       <Stack spacing={2}>
-        {SUS_ITEMS.map((statement, idx) => (
+        {TAM_ITEMS.map((statement, idx) => (
           <Card key={idx} variant="outlined" sx={{ borderRadius: 3 }}>
             <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
               <FormControl component="fieldset" fullWidth>
@@ -200,7 +146,7 @@ export function SusSurveyView() {
                 </FormLabel>
                 <RadioGroup
                   row
-                  name={`sus-item-${idx + 1}`}
+                  name={`tam-item-${idx + 1}`}
                   value={answers[idx] ?? ''}
                   onChange={handleAnswer(idx)}
                   sx={{
@@ -217,7 +163,7 @@ export function SusSurveyView() {
                       disabled={submitting}
                       control={<Radio />}
                       label={
-                        <Stack alignItems="center" sx={{ minWidth: 72 }}>
+                        <Stack alignItems="center" sx={{ minWidth: 56 }}>
                           <Typography
                             variant="body2"
                             sx={{
@@ -231,7 +177,7 @@ export function SusSurveyView() {
                       }
                       sx={{
                         m: 0,
-                        flex: '1 1 72px',
+                        flex: '1 1 56px',
                         alignItems: 'center',
                       }}
                     />
@@ -255,7 +201,7 @@ export function SusSurveyView() {
                       color="text.secondary"
                       sx={{ textTransform: 'uppercase', letterSpacing: 0.6 }}
                     >
-                      5 · Strongly Agree
+                      7 · Strongly Agree
                     </Typography>
                   </Stack>
                 </Box>
@@ -275,13 +221,13 @@ export function SusSurveyView() {
         disabled={submitting || !allAnswered}
       >
         {submitting
-          ? 'Submitting…'
+          ? 'Saving…'
           : allAnswered
-            ? 'Submit Stage'
+            ? 'Next'
             : `Answer all ${ITEM_COUNT} items to continue`}
       </Button>
     </Stack>
   )
 }
 
-export default SusSurveyView
+export default TamSurveyView

@@ -12,10 +12,12 @@ export type Keystroke = {
 
 /**
  * The minimal lock-screen-side performance object captured at unlock-success
- * time. This is the exact shape that gets stashed in `studyStore.tempTelemetry`
- * while the participant fills in the NASA-TLX survey for the same condition,
- * and is what the TLX view merges with `mTurkId`, `condition`, and `nasaTlx`
- * before POSTing to /api/telemetry.
+ * time. This is the base shape that gets stashed in
+ * `studyStore.tempTelemetry` while the participant fills in the matching
+ * `*_TAM` and `*_SUS` surveys for the same condition. Those two survey
+ * views append their `tam` and `sus` subdocs to the same slot; the SUS
+ * view then merges in `mTurkId` and `condition` before POSTing the full
+ * payload to /api/telemetry.
  */
 export type LockScreenMetrics = {
   renderTimestamp: number
@@ -28,7 +30,7 @@ export type LockScreenMetrics = {
    * store (`currentPhaseReturnCount`) and snapshotted into the metrics
    * here at unlock-success time. Accumulates across SETUP ↔ TEST bounces
    * within a single phase; the store resets it only after the matching
-   * `*_TLX` survey is submitted.
+   * `*_SUS` survey is submitted (see `advanceStage` in `studyStore.ts`).
    */
   returnCount: number
   submittedErrors: string[]

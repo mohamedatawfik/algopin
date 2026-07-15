@@ -30,17 +30,12 @@ export type AlgorithmConfiguration = {
    * predefined by complexity (Low → MINUTE_DIGIT,
    * Medium → MINUTE_PLUS_BATTERY, High → MINUTE_PLUS_TRIPLE_BATTERY);
    * the participant does not choose it.
+   *
+   * The replaced digit is *not* stored here — it is a global constant
+   * (`LOCKED_REPLACED_INDEX` in `pinComposer`) fixed to the trailing
+   * digit for every participant, so there is nothing per-user to track.
    */
   algorithmType: AlgorithmType
-  /**
-   * 0-based index of the single base-PIN digit that is replaced by the
-   * algorithm's dynamic value. Always in `[0, BASE_PIN_LENGTH - 1]`
-   * (validated by `pinComposer.isValidReplacedIndex`). Exactly one digit
-   * is replaced — nothing is appended or prepended, and because the
-   * dynamic value is squeezed through mod 10 the resulting PIN stays
-   * `BASE_PIN_LENGTH` digits long.
-   */
-  replacedIndex: number
 }
 
 export type Configurations = {

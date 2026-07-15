@@ -4,12 +4,6 @@ import {
   Card,
   CardContent,
   Chip,
-  FormControl,
-  FormControlLabel,
-  FormHelperText,
-  FormLabel,
-  Radio,
-  RadioGroup,
   Stack,
   Typography,
 } from '@mui/material'
@@ -21,10 +15,8 @@ import {
   computeRawSum,
   decomposePreview,
   getCanonicalType,
-  isValidReplacedIndex,
   placeholderDescriptionForType,
   placeholderForType,
-  REPLACEABLE_INDICES,
 } from '../lib/pinComposer'
 import { AlgorithmComplexity } from '../lib/stageFlow'
 import {
@@ -44,12 +36,13 @@ const COMPLEXITY_STAGE_INDEX: Record<AlgorithmComplexity, number> = {
   High: 12,
 }
 
-const ORDINAL_LABELS = ['1st', '2nd', '3rd', '4th'] as const
-
 /**
  * Title + descriptive blurb shown on the static "Assigned Rule" card.
  * The rule is fixed by the complexity phase — this mapping is the
  * single source of truth for what the UI introduces to the participant.
+ * The digit being replaced is always the 4th (last) digit of the base
+ * PIN, so the copy references it directly rather than talking about a
+ * "chosen digit".
  */
 const RULE_INFO_BY_COMPLEXITY: Record<
   AlgorithmComplexity,
@@ -58,17 +51,17 @@ const RULE_INFO_BY_COMPLEXITY: Record<
   Low: {
     title: 'Digit of the minute (d)',
     description:
-      'For this phase, the chosen digit of your base PIN is replaced by d, the units digit of the current minute shown on the lock screen. For example, at 12:47 the replacement digit is 7.',
+      'For this phase, the 4th (last) digit of your base PIN is replaced by d, the units digit of the current minute shown on the lock screen. For example, at 12:47 the replacement digit is 7.',
   },
   Medium: {
     title: '(d + b) mod 10',
     description:
-      'For this phase, the chosen digit of your base PIN is replaced by (d + b) mod 10, where d is the units digit of the minute and b is the units digit of the battery percentage. Example: at 12:47 with 89% battery, d = 7 and b = 9, so d + b = 16, mod 10 = 6.',
+      'For this phase, the 4th (last) digit of your base PIN is replaced by (d + b) mod 10, where d is the units digit of the minute and b is the units digit of the battery percentage. Example: at 12:47 with 89% battery, d = 7 and b = 9, so d + b = 16, mod 10 = 6.',
   },
   High: {
     title: '(d + 3b) mod 10',
     description:
-      'For this phase, the chosen digit of your base PIN is replaced by (d + 3 × b) mod 10, where d is the units digit of the minute and b is the units digit of the battery percentage. Example: at 12:47 with 89% battery, d = 7 and b = 9, so d + 3b = 34, mod 10 = 4.',
+      'For this phase, the 4th (last) digit of your base PIN is replaced by (d + 3 × b) mod 10, where d is the units digit of the minute and b is the units digit of the battery percentage. Example: at 12:47 with 89% battery, d = 7 and b = 9, so d + 3b = 34, mod 10 = 4.',
   },
 }
 
@@ -79,7 +72,6 @@ export type AlgorithmSetupViewProps = {
 export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   const {
     basePin: storedBasePin,
-    configurations,
     appendTelemetry,
     advanceStage,
     setConfiguration,
@@ -87,7 +79,6 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
 
   const basePin = storedBasePin ?? ''
   const configKey = configKeyForComplexity(complexity)
-  const existingConfig = configurations[configKey]
 
   // The rule is strictly predefined by complexity — we derive the type
   // from the phase and write it straight into the global configuration.
@@ -97,12 +88,6 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   )
 
   const ruleInfo = RULE_INFO_BY_COMPLEXITY[complexity]
-
-  const [replacedIndex, setReplacedIndex] = useState<number | null>(
-    isValidReplacedIndex(existingConfig?.replacedIndex)
-      ? (existingConfig!.replacedIndex as number)
-      : null
-  )
 
   const [now, setNow] = useState(() => new Date())
 
@@ -140,47 +125,34 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   const currentMinuteDigit = now.getMinutes() % 10
   const currentBatteryDigit = sampleBatteryLevel % 10
 
+  // Both preview rows always splice the dynamic value into the trailing
+  // (4th) digit of the base PIN — `decomposePreview` now hardcodes this
+  // slot as `LOCKED_REPLACED_INDEX`, mirroring what the lock screen
+  // will accept.
   const ruleSegments = useMemo(
-    () =>
-      decomposePreview(
-        basePin,
-        placeholderForType(algorithmType),
-        replacedIndex
-      ),
-    [basePin, algorithmType, replacedIndex]
+    () => decomposePreview(basePin, placeholderForType(algorithmType)),
+    [basePin, algorithmType]
   )
   const liveSegments = useMemo(
-    () => decomposePreview(basePin, dynamicValue, replacedIndex),
-    [basePin, dynamicValue, replacedIndex]
+    () => decomposePreview(basePin, dynamicValue),
+    [basePin, dynamicValue]
   )
 
-  const handleReplacedIndexChange = (idx: number) => {
-    if (!isValidReplacedIndex(idx)) return
-    setReplacedIndex(idx)
-    appendTelemetry('algorithm_setup_replaced_index_change', {
-      complexity,
-      replacedIndex: idx,
-    })
-  }
-
   const basePinValid = basePin.length === BASE_PIN_LENGTH
-  const replacedIndexValid = isValidReplacedIndex(replacedIndex)
 
-  // The button is gated on a valid base PIN AND on the participant
-  // picking which digit to replace. The rule itself is hardcoded to the
-  // phase, so no further acknowledgement step is needed.
-  const canSubmit = basePinValid && replacedIndexValid
+  // The rule is hardcoded to the phase and the replaced digit is
+  // globally locked to the 4th slot, so the only gate on submission is
+  // that the participant actually has a valid base PIN.
+  const canSubmit = basePinValid
 
   const handleSubmit = () => {
-    if (!canSubmit || replacedIndex === null) return
+    if (!canSubmit) return
     setConfiguration(configKey, {
       algorithmType,
-      replacedIndex,
     })
     appendTelemetry('algorithm_setup_submit', {
       complexity,
       algorithmType,
-      replacedIndex,
     })
     advanceStage()
   }
@@ -207,12 +179,12 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
       </Stack>
 
       <Typography variant="h5" component="h1">
-        Configure your {COMPLEXITY_LABELS[complexity].toLowerCase()} rule
+        Review your {COMPLEXITY_LABELS[complexity].toLowerCase()} rule
       </Typography>
       <Typography variant="body1" color="text.secondary">
-        Review the rule assigned to this phase, then choose exactly one
-        digit of your base PIN to replace with it. The dynamic value is
-        always a single digit (mod 10), so the PIN stays at{' '}
+        The 4th (last) digit of your base PIN will always be replaced by
+        the result of the assigned mathematical rule. The dynamic value
+        is always a single digit (mod 10), so the PIN stays at{' '}
         {BASE_PIN_LENGTH} digits — nothing is appended or prepended.
       </Typography>
 
@@ -244,90 +216,34 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
 
       <Card variant="outlined" sx={{ borderRadius: 3 }}>
         <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
-          <FormControl
-            component="fieldset"
-            fullWidth
-            disabled={!basePinValid}
-          >
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              sx={{ mb: 1.25 }}
-            >
-              <FormLabel sx={{ fontWeight: 600 }}>
-                Digit to replace
-              </FormLabel>
-              <Chip
-                label={
-                  replacedIndex === null
-                    ? 'No digit selected'
-                    : `${ORDINAL_LABELS[replacedIndex]} digit selected`
-                }
-                size="small"
-                color={replacedIndex === null ? 'default' : 'primary'}
-                variant="outlined"
-              />
-            </Stack>
-            <RadioGroup
-              value={replacedIndex === null ? '' : String(replacedIndex)}
-              onChange={(_, v) => handleReplacedIndexChange(Number(v))}
-            >
-              {REPLACEABLE_INDICES.map((idx) => {
-                const baseDigit = basePin[idx] ?? '–'
-                return (
-                  <FormControlLabel
-                    key={idx}
-                    value={String(idx)}
-                    control={<Radio />}
-                    label={
-                      <Stack
-                        direction="row"
-                        alignItems="center"
-                        spacing={1}
-                      >
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          Replace {ORDINAL_LABELS[idx]} Digit
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ fontVariantNumeric: 'tabular-nums' }}
-                        >
-                          (currently &lsquo;{baseDigit}&rsquo;)
-                        </Typography>
-                      </Stack>
-                    }
-                  />
-                )
-              })}
-            </RadioGroup>
-            <FormHelperText>
-              Exactly one digit is replaced by{' '}
-              {placeholderDescriptionForType(algorithmType)} when you unlock.
-            </FormHelperText>
-          </FormControl>
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined" sx={{ borderRadius: 3 }}>
-        <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
-          <Typography
-            variant="overline"
-            color="text.secondary"
-            display="block"
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
             sx={{ mb: 1 }}
           >
-            Preview
-          </Typography>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              display="block"
+            >
+              Preview
+            </Typography>
+            <Chip
+              label="4th digit always replaced"
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
+          </Stack>
 
           <PreviewRow
             label="Rule"
             segments={ruleSegments}
             caption={
-              replacedIndex === null
-                ? 'Select a digit above to see how your base PIN changes.'
-                : `where ${placeholderForType(algorithmType)} = ${placeholderDescriptionForType(algorithmType)}`
+              basePinValid
+                ? `where ${placeholderForType(algorithmType)} = ${placeholderDescriptionForType(algorithmType)}`
+                : 'Set your base PIN first to see how your live PIN is built.'
             }
           />
           <Box sx={{ height: 12 }} />
@@ -335,9 +251,8 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
             label="Right now"
             segments={liveSegments}
             caption={
-              replacedIndex === null
-                ? 'No digit replaced yet — the live PIN equals your base PIN.'
-                : buildLiveCaption(
+              basePinValid
+                ? buildLiveCaption(
                     algorithmType,
                     dynamicValue,
                     rawSum,
@@ -345,6 +260,7 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
                     currentBatteryDigit,
                     sampleBatteryLevel
                   )
+                : 'The live PIN preview activates once a valid base PIN is set.'
             }
           />
         </CardContent>

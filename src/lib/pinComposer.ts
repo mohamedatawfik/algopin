@@ -29,15 +29,15 @@ export type PreviewSegment = {
 export const BASE_PIN_LENGTH = 4
 
 /**
- * The fixed set of base-PIN indices a participant can choose to replace
- * with the dynamic value. Exactly one of these is selected per
- * algorithmic condition — the PIN length always stays at
- * `BASE_PIN_LENGTH` and only that single digit becomes dynamic.
+ * The single, globally-locked base-PIN index that is replaced by the
+ * dynamic value during any algorithmic phase. We deliberately pin this
+ * to the trailing (4th) digit for *every* participant and *every*
+ * complexity so that variability across participants comes only from
+ * the rule difficulty, not from which digit they happened to pick.
+ * The PIN length always stays at `BASE_PIN_LENGTH`; only this single
+ * digit becomes dynamic.
  */
-export const REPLACEABLE_INDICES: readonly number[] = Array.from(
-  { length: BASE_PIN_LENGTH },
-  (_, i) => i
-)
+export const LOCKED_REPLACED_INDEX = BASE_PIN_LENGTH - 1
 
 const CANONICAL_TYPE_BY_COMPLEXITY: Record<AlgorithmComplexity, AlgorithmType> =
   {
@@ -125,44 +125,17 @@ export function computeDynamicValue(
   return String(computeRawSum(type, ctx) % 10)
 }
 
-export function isValidReplacedIndex(
-  index: number | null | undefined,
-  pinLength = BASE_PIN_LENGTH
-): index is number {
-  return (
-    typeof index === 'number' &&
-    Number.isInteger(index) &&
-    index >= 0 &&
-    index < pinLength
-  )
-}
-
 /**
- * Replace exactly the character at `replacedIndex` of `basePin` with
- * `dynamicValue`. The base PIN length is preserved — nothing is appended
- * or prepended. If `replacedIndex` is invalid the base PIN is returned
- * unchanged (benign fallback for unexpected states).
+ * Preview breakdown of `basePin` with the dynamic value spliced into
+ * the globally-locked replacement slot (`LOCKED_REPLACED_INDEX`). Used
+ * by the setup screen to render the "Rule" and "Right now" chips.
  */
-export function applyReplacement(
-  basePin: string,
-  dynamicValue: string,
-  replacedIndex: number
-): string {
-  if (!isValidReplacedIndex(replacedIndex, basePin.length)) return basePin
-  return (
-    basePin.substring(0, replacedIndex) +
-    dynamicValue +
-    basePin.substring(replacedIndex + 1)
-  )
-}
-
 export function decomposePreview(
   basePin: string,
-  dynamicValue: string,
-  replacedIndex: number | null
+  dynamicValue: string
 ): PreviewSegment[] {
   return basePin.split('').map((value, idx) => {
-    const isDynamic = idx === replacedIndex
+    const isDynamic = idx === LOCKED_REPLACED_INDEX
     return {
       value: isDynamic ? dynamicValue : value,
       isDynamic,
@@ -176,24 +149,8 @@ export function getCanonicalType(
   return CANONICAL_TYPE_BY_COMPLEXITY[complexity]
 }
 
-/**
- * Fallback index used only when something lands on the lock screen
- * without an explicit configuration (e.g. dev navigation, restored
- * session before the participant picked an index). We default to the
- * trailing digit for every complexity so the lock screen always has
- * well-defined behavior. The parameter is reserved for future
- * complexity-specific defaults.
- */
-export function defaultReplacedIndexForComplexity(
-  complexity: AlgorithmComplexity
-): number {
-  void complexity
-  return BASE_PIN_LENGTH - 1
-}
-
 export type ResolvedConfiguration = {
   algorithmType: AlgorithmType
-  replacedIndex: number
 }
 
 /**
@@ -204,8 +161,8 @@ export type ResolvedConfiguration = {
  *  - For LOW_TEST / MED_TEST / HIGH_TEST the dynamic value is computed from
  *    `currentConfig.algorithmType` against the live lock-screen context
  *    (`date`, `batteryLevel`), squeezed through mod 10 into a single 0..9
- *    digit, and spliced into `currentConfig.replacedIndex` of the base
- *    PIN. The PIN length is preserved.
+ *    digit, and spliced into the globally-locked trailing digit of the
+ *    base PIN (`LOCKED_REPLACED_INDEX`). The PIN length is preserved.
  *  - For any other stage (or a missing config) it returns `basePin` as a
  *    benign fallback so callers never get an exception in unexpected states.
  */
@@ -224,12 +181,10 @@ export function calculateExpectedPin(
     return basePin
   }
   if (!currentConfig) return basePin
-  const index = currentConfig.replacedIndex
-  if (!isValidReplacedIndex(index, basePin.length)) return basePin
-  const finalDynamicDigit = computeDynamicValue(currentConfig.algorithmType, ctx)
-  return (
-    basePin.substring(0, index) +
-    finalDynamicDigit +
-    basePin.substring(index + 1)
+  if (basePin.length !== BASE_PIN_LENGTH) return basePin
+  const finalDynamicDigitString = computeDynamicValue(
+    currentConfig.algorithmType,
+    ctx
   )
+  return basePin.substring(0, LOCKED_REPLACED_INDEX) + finalDynamicDigitString
 }

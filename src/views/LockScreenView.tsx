@@ -22,9 +22,7 @@ import {
 } from '../hooks/useLockScreenTelemetry'
 import {
   calculateExpectedPin,
-  defaultReplacedIndexForComplexity,
   getCanonicalType,
-  isValidReplacedIndex,
   ResolvedConfiguration,
 } from '../lib/pinComposer'
 import { AlgorithmComplexity, previousStage } from '../lib/stageFlow'
@@ -125,16 +123,12 @@ export function LockScreenView() {
     const config = configurations[configKeyForComplexity(complexity)]
     // The rule type is strictly predefined by phase; we honor the value
     // saved during setup but fall back to the canonical mapping if a
-    // session ever lands here without a stored configuration. The
-    // replaced digit is chosen per participant during setup — if we
-    // arrive here without one (dev navigation, restored session, etc.)
-    // we fall back to the trailing digit so the lock screen still has
-    // well-defined behavior.
+    // session ever lands here without a stored configuration (e.g. dev
+    // navigation, restored session). The replaced digit is a global
+    // constant (`LOCKED_REPLACED_INDEX`) and is applied inside
+    // `calculateExpectedPin`, so it does not need to be tracked here.
     const algorithmType = config?.algorithmType ?? getCanonicalType(complexity)
-    const replacedIndex = isValidReplacedIndex(config?.replacedIndex)
-      ? (config!.replacedIndex as number)
-      : defaultReplacedIndexForComplexity(complexity)
-    return { algorithmType, replacedIndex }
+    return { algorithmType }
   }, [currentCondition, configurations])
 
   const expectedPin = useMemo(

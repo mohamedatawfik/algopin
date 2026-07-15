@@ -1,7 +1,7 @@
 import {
   AccessTimeRounded,
+  BatteryChargingFullRounded,
   CalculateRounded,
-  ChatBubbleRounded,
 } from '@mui/icons-material'
 import {
   Box,
@@ -18,22 +18,32 @@ import { useStudyStore } from '../store/studyStore'
 const EXAMPLES: {
   icon: JSX.Element
   title: string
-  body: string
+  description: string
+  example: string
 }[] = [
   {
     icon: <AccessTimeRounded fontSize="small" />,
-    title: 'Time-based',
-    body: 'The units digit of the current minute replaces the 4th (last) digit of your PIN. If the screen shows 14:27, base PIN 1234 becomes 1237.',
+    title: 'Low Complexity',
+    description:
+      'The last digit of the current minute replaces the 4th digit of your PIN.',
+    example:
+      'If the time is 14:27, the calculated number is 7. Base PIN 1234 becomes 1237.',
   },
   {
-    icon: <ChatBubbleRounded fontSize="small" />,
-    title: 'Notification-based',
-    body: 'The units digit of the unread message count replaces the 4th (last) digit. With 4 unread, base PIN 1234 becomes 1234.',
+    icon: <BatteryChargingFullRounded fontSize="small" />,
+    title: 'Medium Complexity',
+    description:
+      'The last digit of the minute is added to the last digit of the battery percentage.',
+    example:
+      'If the time is 14:27 and battery is 82%, the math is 7 + 2 = 9. Base PIN 1234 becomes 1239.',
   },
   {
     icon: <CalculateRounded fontSize="small" />,
-    title: 'Cross-sum',
-    body: 'The units digit of the cross-sum of the time replaces the 4th (last) digit. At 12:24, 1+2+2+4 = 9, so base PIN 1234 becomes 1239.',
+    title: 'High Complexity',
+    description:
+      'The last digit of the minute is added to (the last digit of the battery multiplied by 3).',
+    example:
+      'If the time is 14:27 and battery is 82%, the math is 7 + (2 × 3) = 13. Using only the last digit (3), base PIN 1234 becomes 1233.',
   },
 ]
 
@@ -77,10 +87,11 @@ export function AlgoIntroView() {
             How a live PIN is built
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-            On each upcoming setup screen you will review the rule assigned
-            to that phase (the dynamic element). The rule always replaces
-            the 4th (last) digit of your base PIN — you do not pick the
-            rule or the digit. The total PIN length stays at 4 digits.
+            For all upcoming tasks, the 4th (last) digit of your base PIN
+            will be replaced by a dynamic number calculated from the lock
+            screen environment. The total PIN length stays exactly at 4
+            digits. If a calculation results in a double-digit number, you
+            will only use the last digit of the sum.
           </Typography>
 
           <Stack spacing={2}>
@@ -117,9 +128,22 @@ export function AlgoIntroView() {
                   <Typography
                     variant="body2"
                     color="text.secondary"
-                    sx={{ mt: 0.25 }}
+                    sx={{ mt: 0.5 }}
                   >
-                    {ex.body}
+                    <Box component="span" sx={{ fontWeight: 600 }}>
+                      Description:
+                    </Box>{' '}
+                    {ex.description}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 0.5 }}
+                  >
+                    <Box component="span" sx={{ fontWeight: 600 }}>
+                      Example:
+                    </Box>{' '}
+                    {ex.example}
                   </Typography>
                 </Box>
               </Stack>
@@ -146,11 +170,12 @@ export function AlgoIntroView() {
             What happens next
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            You will configure three conditions in order — Low, Medium, then
-            High complexity. After each setup you will unlock once with that
-            live PIN. Take a breath before continuing; the upcoming tasks
-            measure how naturally you adapt to a passcode that changes with
-            context.
+            You will experience three conditions in order — Low, Medium,
+            then High complexity. For each condition, the rule will be
+            shown to you, and you will unlock the simulated phone once
+            using that rule. Take a breath before continuing; the upcoming
+            tasks measure how naturally you adapt to a passcode that
+            changes with context.
           </Typography>
         </CardContent>
       </Card>

@@ -9,21 +9,21 @@ const ALGORITHMS = [
     complexity: 'Low',
     type: 'MINUTE_DIGIT',
     description:
-      'Replace the participant-chosen digit of the base PIN with d, the units digit of the current minute.',
+      'Replace the last digit of the base PIN with the last digit of the current minute.',
   },
   {
     algorithmId: 'medium-minute-plus-battery',
     complexity: 'Medium',
     type: 'MINUTE_PLUS_BATTERY',
     description:
-      'Replace the participant-chosen digit of the base PIN with (d + b) mod 10, where d is the units digit of the current minute and b is the units digit of the battery percentage shown on the lock screen. The resulting digit is always a single 0..9 character, so the PIN length is preserved.',
+      'Replace the last digit of the base PIN with the last digit of (the current minute plus the battery percentage). If the sum is two digits, use only the last digit so the PIN length stays the same.',
   },
   {
     algorithmId: 'high-minute-plus-triple-battery',
     complexity: 'High',
     type: 'MINUTE_PLUS_TRIPLE_BATTERY',
     description:
-      'Replace the participant-chosen digit of the base PIN with (d + 3 * b) mod 10, where d is the units digit of the current minute and b is the units digit of the battery percentage. The resulting digit is always a single 0..9 character, so the PIN length is preserved.',
+      'Replace the last digit of the base PIN with the last digit of (the current minute plus three times the battery percentage digit). If the result is two digits, use only the last digit so the PIN length stays the same.',
   },
 ]
 

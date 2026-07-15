@@ -47,24 +47,21 @@ const CANONICAL_TYPE_BY_COMPLEXITY: Record<AlgorithmComplexity, AlgorithmType> =
   }
 
 /**
- * Short mnemonic used in the "Rule" preview chip on the setup screen —
- * it stands in for the yet-to-be-computed dynamic value. Because the
- * final value is squeezed through mod 10, the mnemonic is written with
- * an explicit `(… ) mod 10` for MED/HIGH so participants can read the
- * transformation at a glance.
+ * Short placeholder used in the "Rule" preview chip on the setup screen —
+ * it stands in for the yet-to-be-computed dynamic value. Captions below
+ * the chip explain what [X] means in plain English (no mod / variable
+ * notation), so participants can map the rule onto their live PIN.
  */
 const PLACEHOLDER_BY_TYPE: Record<AlgorithmType, string> = {
-  MINUTE_DIGIT: 'd',
-  MINUTE_PLUS_BATTERY: '(d+b) mod 10',
-  MINUTE_PLUS_TRIPLE_BATTERY: '(d+3b) mod 10',
+  MINUTE_DIGIT: '[X]',
+  MINUTE_PLUS_BATTERY: '[X]',
+  MINUTE_PLUS_TRIPLE_BATTERY: '[X]',
 }
 
 const PLACEHOLDER_DESCRIPTION_BY_TYPE: Record<AlgorithmType, string> = {
-  MINUTE_DIGIT: 'the units digit of the current minute',
-  MINUTE_PLUS_BATTERY:
-    'the last digit of (the units digit of the minute plus the units digit of the battery percentage)',
-  MINUTE_PLUS_TRIPLE_BATTERY:
-    'the last digit of (the units digit of the minute plus three times the units digit of the battery percentage)',
+  MINUTE_DIGIT: 'the last digit of the minute',
+  MINUTE_PLUS_BATTERY: 'the last digit of (Minute + Battery)',
+  MINUTE_PLUS_TRIPLE_BATTERY: 'the last digit of (Minute + (Battery x 3))',
 }
 
 export function placeholderForType(type: AlgorithmType): string {
@@ -88,10 +85,9 @@ function unitsDigit(n: number): number {
 }
 
 /**
- * Compute the raw (pre-modulo) arithmetic value for a rule. Exposed for
+ * Compute the raw (pre-wrap) arithmetic value for a rule. Exposed for
  * the setup preview so the "Right now" caption can show the full
- * `d + 3b = 34, mod 10 = 4` breakdown without having to re-derive the
- * intermediate figure.
+ * sum (e.g. 7 + 9 = 16) before taking only the last digit.
  */
 export function computeRawSum(
   type: AlgorithmType,

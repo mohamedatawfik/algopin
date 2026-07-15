@@ -49,19 +49,19 @@ const RULE_INFO_BY_COMPLEXITY: Record<
   { title: string; description: string }
 > = {
   Low: {
-    title: 'Digit of the minute (d)',
+    title: 'Digit of the minute',
     description:
-      'For this phase, the 4th (last) digit of your base PIN is replaced by d, the units digit of the current minute shown on the lock screen. For example, at 12:47 the replacement digit is 7.',
+      'For this phase, the 4th (last) digit of your base PIN is replaced by the last digit of the current minute shown on the lock screen. For example, at 12:47 the replacement digit is 7.',
   },
   Medium: {
-    title: '(d + b) mod 10',
+    title: 'Minute + Battery',
     description:
-      'For this phase, the 4th (last) digit of your base PIN is replaced by (d + b) mod 10, where d is the units digit of the minute and b is the units digit of the battery percentage. Example: at 12:47 with 89% battery, d = 7 and b = 9, so d + b = 16, mod 10 = 6.',
+      'For this phase, add the last digit of the minute to the last digit of the battery percentage. If the result is a double-digit number, use only the last digit. Example: at 12:47 with 89% battery, 7 + 9 = 16. Using only the last digit (6), your dynamic value is 6.',
   },
   High: {
-    title: '(d + 3b) mod 10',
+    title: 'Minute + (Battery x 3)',
     description:
-      'For this phase, the 4th (last) digit of your base PIN is replaced by (d + 3 × b) mod 10, where d is the units digit of the minute and b is the units digit of the battery percentage. Example: at 12:47 with 89% battery, d = 7 and b = 9, so d + 3b = 34, mod 10 = 4.',
+      'For this phase, multiply the last digit of the battery percentage by 3, then add it to the last digit of the minute. If the result is a double-digit number, use only the last digit. Example: at 12:47 with 82% battery, the math is 7 + (2 * 3) = 13. Using only the last digit (3), your dynamic value is 3.',
   },
 }
 
@@ -183,9 +183,9 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
       </Typography>
       <Typography variant="body1" color="text.secondary">
         The 4th (last) digit of your base PIN will always be replaced by
-        the result of the assigned mathematical rule. The dynamic value
-        is always a single digit (mod 10), so the PIN stays at{' '}
-        {BASE_PIN_LENGTH} digits — nothing is appended or prepended.
+        the result of the assigned rule. The dynamic value is always a
+        single digit, so the PIN stays at {BASE_PIN_LENGTH} digits —
+        nothing is appended or prepended.
       </Typography>
 
       <Card variant="outlined" sx={{ borderRadius: 3 }}>
@@ -295,11 +295,11 @@ function buildLiveCaption(
 ): string {
   switch (algorithmType) {
     case 'MINUTE_DIGIT':
-      return `uses the current value (${dynamicValue}) — d = ${minuteDigit}`
+      return `uses the current value (${dynamicValue}) — the last digit of the minute is ${minuteDigit}`
     case 'MINUTE_PLUS_BATTERY':
-      return `uses the current value (${dynamicValue}) — d = ${minuteDigit}, b = ${batteryDigit} (sample battery ${sampleBatteryLevel}%), so d + b = ${rawSum}, mod 10 = ${dynamicValue}`
+      return `uses the current value (${dynamicValue}) — Example battery ${sampleBatteryLevel}%, so ${minuteDigit} + ${batteryDigit} = ${rawSum}. Using the last digit gives ${dynamicValue}.`
     case 'MINUTE_PLUS_TRIPLE_BATTERY':
-      return `uses the current value (${dynamicValue}) — d = ${minuteDigit}, b = ${batteryDigit} (sample battery ${sampleBatteryLevel}%), so d + 3b = ${rawSum}, mod 10 = ${dynamicValue}`
+      return `uses the current value (${dynamicValue}) — Example battery ${sampleBatteryLevel}%, so ${minuteDigit} + (${batteryDigit} * 3) = ${rawSum}. Using the last digit gives ${dynamicValue}.`
   }
 }
 

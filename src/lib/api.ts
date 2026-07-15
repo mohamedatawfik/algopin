@@ -17,7 +17,7 @@ export type PredefinedAlgorithm = {
   algorithmId: string
   complexity: AlgorithmComplexity
   description: string
-  type: 'MINUTE_DIGIT' | 'UNREAD_MESSAGES' | 'TIME_CROSS_SUM'
+  type: 'MINUTE_DIGIT' | 'MINUTE_PLUS_BATTERY' | 'MINUTE_PLUS_TRIPLE_BATTERY'
   _id?: string
   createdAt?: string
   updatedAt?: string

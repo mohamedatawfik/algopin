@@ -9,21 +9,21 @@ const ALGORITHMS = [
     complexity: 'Low',
     type: 'MINUTE_DIGIT',
     description:
-      'Replace each chosen position of the base PIN with the units digit of the current minute.',
+      'Replace the participant-chosen digit of the base PIN with d, the units digit of the current minute.',
   },
   {
-    algorithmId: 'medium-unread-messages',
+    algorithmId: 'medium-minute-plus-battery',
     complexity: 'Medium',
-    type: 'UNREAD_MESSAGES',
+    type: 'MINUTE_PLUS_BATTERY',
     description:
-      'Replace each chosen position of the base PIN with the units digit of the simulated unread messages count.',
+      'Replace the participant-chosen digit of the base PIN with (d + b) mod 10, where d is the units digit of the current minute and b is the units digit of the battery percentage shown on the lock screen. The resulting digit is always a single 0..9 character, so the PIN length is preserved.',
   },
   {
-    algorithmId: 'high-time-cross-sum',
+    algorithmId: 'high-minute-plus-triple-battery',
     complexity: 'High',
-    type: 'TIME_CROSS_SUM',
+    type: 'MINUTE_PLUS_TRIPLE_BATTERY',
     description:
-      'Replace each chosen position of the base PIN with the units digit of the cross-sum of the current time (HH+MM).',
+      'Replace the participant-chosen digit of the base PIN with (d + 3 * b) mod 10, where d is the units digit of the current minute and b is the units digit of the battery percentage. The resulting digit is always a single 0..9 character, so the PIN length is preserved.',
   },
 ]
 

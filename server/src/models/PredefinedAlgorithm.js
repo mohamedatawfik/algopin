@@ -5,8 +5,8 @@ const { Schema, model } = mongoose
 export const COMPLEXITIES = ['Low', 'Medium', 'High']
 export const ALGORITHM_TYPES = [
   'MINUTE_DIGIT',
-  'UNREAD_MESSAGES',
-  'TIME_CROSS_SUM',
+  'MINUTE_PLUS_BATTERY',
+  'MINUTE_PLUS_TRIPLE_BATTERY',
 ]
 
 const predefinedAlgorithmSchema = new Schema(

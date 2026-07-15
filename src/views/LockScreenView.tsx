@@ -22,7 +22,9 @@ import {
 } from '../hooks/useLockScreenTelemetry'
 import {
   calculateExpectedPin,
+  defaultReplacedIndexForComplexity,
   getCanonicalType,
+  isValidReplacedIndex,
   ResolvedConfiguration,
 } from '../lib/pinComposer'
 import { AlgorithmComplexity, previousStage } from '../lib/stageFlow'
@@ -124,20 +126,24 @@ export function LockScreenView() {
     // The rule type is strictly predefined by phase; we honor the value
     // saved during setup but fall back to the canonical mapping if a
     // session ever lands here without a stored configuration. The
-    // replaced digit is a global constant (see
-    // `pinComposer.DYNAMIC_DIGIT_INDEX`) and no longer part of the
-    // per-user configuration.
+    // replaced digit is chosen per participant during setup — if we
+    // arrive here without one (dev navigation, restored session, etc.)
+    // we fall back to the trailing digit so the lock screen still has
+    // well-defined behavior.
     const algorithmType = config?.algorithmType ?? getCanonicalType(complexity)
-    return { algorithmType }
+    const replacedIndex = isValidReplacedIndex(config?.replacedIndex)
+      ? (config!.replacedIndex as number)
+      : defaultReplacedIndexForComplexity(complexity)
+    return { algorithmType, replacedIndex }
   }, [currentCondition, configurations])
 
   const expectedPin = useMemo(
     () =>
       calculateExpectedPin(basePin, currentStage, resolvedConfig, {
         date: now,
-        unreadCount,
+        batteryLevel: battery,
       }),
-    [basePin, currentStage, resolvedConfig, now, unreadCount]
+    [basePin, currentStage, resolvedConfig, now, battery]
   )
 
   const expectedLength = expectedPin.length
@@ -146,11 +152,15 @@ export function LockScreenView() {
     appendTelemetry('lock_screen_opened', {
       condition: currentCondition,
       basePin,
+      // Ambient lock-screen state at open time. `unreadCount` is now
+      // purely decorative; `batteryLevel` is what the Medium and High
+      // rules evaluate against.
       unreadCount,
+      batteryLevel: battery,
     })
     const t = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(t)
-  }, [appendTelemetry, basePin, currentCondition, unreadCount])
+  }, [appendTelemetry, basePin, currentCondition, unreadCount, battery])
 
   useEffect(() => {
     return () => {
@@ -166,7 +176,7 @@ export function LockScreenView() {
         basePin,
         currentStage,
         resolvedConfig,
-        { date: new Date(), unreadCount }
+        { date: new Date(), batteryLevel: battery }
       )
       const ok = attempt === target
       appendTelemetry('pin_attempt', {
@@ -239,6 +249,7 @@ export function LockScreenView() {
       advanceStage,
       appendTelemetry,
       basePin,
+      battery,
       currentCondition,
       currentPhaseReturnCount,
       currentStage,
@@ -247,7 +258,6 @@ export function LockScreenView() {
       resolvedConfig,
       setTempTelemetry,
       telemetry,
-      unreadCount,
     ]
   )
 

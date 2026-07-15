@@ -27,15 +27,20 @@ export type PinCondition = 'Baseline' | 'Low' | 'Medium' | 'High'
 export type AlgorithmConfiguration = {
   /**
    * The dynamic-value rule applied during the test phase. Strictly
-   * predefined by complexity (Low → MINUTE_DIGIT, Medium → UNREAD_MESSAGES,
-   * High → TIME_CROSS_SUM); the participant no longer chooses it.
-   *
-   * The replaced digit is always the 4th (last) digit of the base PIN
-   * for every participant and every phase — see
-   * `pinComposer.DYNAMIC_DIGIT_INDEX`. Because it is a global constant we
-   * no longer track it per user.
+   * predefined by complexity (Low → MINUTE_DIGIT,
+   * Medium → MINUTE_PLUS_BATTERY, High → MINUTE_PLUS_TRIPLE_BATTERY);
+   * the participant does not choose it.
    */
   algorithmType: AlgorithmType
+  /**
+   * 0-based index of the single base-PIN digit that is replaced by the
+   * algorithm's dynamic value. Always in `[0, BASE_PIN_LENGTH - 1]`
+   * (validated by `pinComposer.isValidReplacedIndex`). Exactly one digit
+   * is replaced — nothing is appended or prepended, and because the
+   * dynamic value is squeezed through mod 10 the resulting PIN stays
+   * `BASE_PIN_LENGTH` digits long.
+   */
+  replacedIndex: number
 }
 
 export type Configurations = {

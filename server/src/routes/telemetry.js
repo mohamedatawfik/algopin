@@ -8,6 +8,7 @@ import TelemetryLog, {
   TAM_FIELDS,
   TAM_MAX,
   TAM_MIN,
+  TECH_AFFINITY_ITEM_COUNT,
 } from '../models/TelemetryLog.js'
 
 const router = Router()
@@ -35,6 +36,37 @@ function normalizeSurveyPayload(raw, fieldNames) {
     return raw
   }
   return null
+}
+
+/**
+ * Best-effort normalisers for the two optional participant-level blocks a
+ * telemetry POST may carry (demographics + attention check). Malformed
+ * shapes return null; the route then omits the field rather than failing
+ * the entire telemetry write.
+ */
+function normalizeDemographicsBlock(raw) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const techAffinityRaw = Array.isArray(raw.techAffinity)
+    ? raw.techAffinity.filter(
+        (v) => typeof v === 'number' && Number.isFinite(v)
+      )
+    : []
+  return {
+    birthDate: typeof raw.birthDate === 'string' ? raw.birthDate : '',
+    education: typeof raw.education === 'string' ? raw.education : '',
+    passwordFrequency:
+      typeof raw.passwordFrequency === 'string' ? raw.passwordFrequency : '',
+    techAffinity: techAffinityRaw.slice(0, TECH_AFFINITY_ITEM_COUNT),
+  }
+}
+
+function normalizeAttentionCheckBlock(raw) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  return {
+    verificationYear:
+      typeof raw.verificationYear === 'string' ? raw.verificationYear : '',
+    passedCheck: Boolean(raw.passedCheck),
+  }
 }
 
 function validateNamedLikertBlock(raw, { name, fieldNames, min, max }) {
@@ -110,6 +142,9 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: sus.error })
     }
 
+    const demographics = normalizeDemographicsBlock(body.demographics)
+    const attentionCheck = normalizeAttentionCheckBlock(body.attentionCheck)
+
     const doc = await TelemetryLog.create({
       mTurkId: body.mTurkId.trim(),
       condition,
@@ -131,6 +166,8 @@ router.post('/', async (req, res, next) => {
       keystrokeLog: Array.isArray(body.keystrokeLog) ? body.keystrokeLog : [],
       tam: tam.value,
       sus: sus.value,
+      ...(demographics ? { demographics } : {}),
+      ...(attentionCheck ? { attentionCheck } : {}),
       completedAt: body.completedAt,
       schemaVersion: body.schemaVersion,
     })

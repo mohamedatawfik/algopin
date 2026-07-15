@@ -39,6 +39,21 @@ export const SUS_FIELDS = [
   'item10',
 ]
 
+/**
+ * Demographics self-reported by the participant in the DEMOGRAPHICS phase
+ * (between ONBOARDING and STATIC_SETUP). `techAffinity` captures answers to
+ * a 4-item tech-affinity questionnaire as an ordered array of numbers so
+ * item order is preserved verbatim.
+ */
+export const TECH_AFFINITY_ITEM_COUNT = 4
+
+/**
+ * Attention-check probe captured inline at the top of the terminal
+ * completion screen (birth-year re-verification). `verificationYear` is
+ * the raw string typed by the participant; `passedCheck` is the boolean
+ * the frontend derived by comparing it against the expected answer.
+ */
+
 const keystrokeSchema = new Schema(
   {
     key: { type: String, required: true },
@@ -92,6 +107,34 @@ const susSchema = new Schema(
   { _id: false }
 )
 
+const demographicsSchema = new Schema(
+  {
+    birthDate: { type: String, default: '', trim: true },
+    education: { type: String, default: '', trim: true },
+    passwordFrequency: { type: String, default: '', trim: true },
+    techAffinity: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (arr) =>
+          Array.isArray(arr) &&
+          arr.length <= TECH_AFFINITY_ITEM_COUNT &&
+          arr.every((v) => typeof v === 'number' && Number.isFinite(v)),
+        message: `techAffinity must be an array of up to ${TECH_AFFINITY_ITEM_COUNT} finite numbers`,
+      },
+    },
+  },
+  { _id: false }
+)
+
+const attentionCheckSchema = new Schema(
+  {
+    verificationYear: { type: String, default: '', trim: true },
+    passedCheck: { type: Boolean, default: false },
+  },
+  { _id: false }
+)
+
 const telemetryLogSchema = new Schema(
   {
     mTurkId: {
@@ -128,6 +171,20 @@ const telemetryLogSchema = new Schema(
      */
     tam: { type: tamSchema, required: true },
     sus: { type: susSchema, required: true },
+    /**
+     * Participant-level demographics collected once in the DEMOGRAPHICS
+     * phase. Optional on any given telemetry doc because the same values
+     * are also written to the `Participant` record at finalize time; the
+     * subdoc is available on every telemetry POST so per-condition
+     * analyses can join without a second lookup.
+     */
+    demographics: { type: demographicsSchema, default: undefined },
+    /**
+     * Optional final-phase attention-check snapshot. Only populated on the
+     * last telemetry doc for a participant (or is written to the
+     * Participant record at finalize time).
+     */
+    attentionCheck: { type: attentionCheckSchema, default: undefined },
     completedAt: { type: Number },
     schemaVersion: { type: Number },
   },

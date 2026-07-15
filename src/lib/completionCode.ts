@@ -7,16 +7,16 @@
  * can cross-reference the paste against the study database, and displayed
  * verbatim to the participant.
  *
- * Format: `Algopin-mta-XXXXXX`, where `XXXXXX` is a 6-character random
+ * Format: `ALGOPIN-MTA-XXXXXX`, where `XXXXXX` is a 6-character random
  * suffix drawn uniformly from `A-Z` and `0-9`. `COMPLETION_CODE_REGEX`
  * is the authoritative shape check reused by the frontend and the API
  * validator.
  */
 
-export const COMPLETION_CODE_PREFIX = 'Algopin-mta-'
+export const COMPLETION_CODE_PREFIX = 'ALGOPIN-MTA-'
 export const COMPLETION_CODE_SUFFIX_LENGTH = 6
 export const COMPLETION_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-export const COMPLETION_CODE_REGEX = /^Algopin-mta-[A-Z0-9]{6}$/
+export const COMPLETION_CODE_REGEX = /^ALGOPIN-MTA-[A-Z0-9]{6}$/
 
 function pickRandomChar(alphabet: string): string {
   // Prefer the Web Crypto RNG when available so codes generated in
@@ -37,7 +37,7 @@ function pickRandomChar(alphabet: string): string {
 
 /**
  * Generate a fresh MTurk completion code in the canonical
- * `Algopin-mta-XXXXXX` format. Each call returns an independent random
+ * `ALGOPIN-MTA-XXXXXX` format. Each call returns an independent random
  * value.
  */
 export function generateCompletionCode(): string {

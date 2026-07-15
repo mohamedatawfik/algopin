@@ -62,7 +62,7 @@ export function AlgoIntroView() {
   return (
     <Stack spacing={3} sx={{ maxWidth: 560, mx: 'auto', py: 2 }}>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <Chip label="Stage 5 / 15" size="small" variant="outlined" />
+        <Chip label="Stage 7 / 21" size="small" variant="outlined" />
         <Chip
           label="Mental break"
           size="small"

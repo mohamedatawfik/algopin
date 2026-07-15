@@ -110,6 +110,57 @@ export type TelemetrySubmission = {
   keystrokeLog: Keystroke[]
   tam: TamAnswers
   sus: SusAnswersPerCondition
+  /**
+   * Optional participant-level blocks. Included by the frontend on the
+   * final per-condition telemetry POST so per-condition analyses can join
+   * without a second lookup; the same values are also written to the
+   * Participant record via `/api/participant/finalize`.
+   */
+  demographics?: Demographics
+  attentionCheck?: AttentionCheck
+}
+
+/**
+ * Number of items on the tech-affinity portion of the DEMOGRAPHICS phase.
+ * Each answer is a numeric Likert-style response persisted verbatim as an
+ * ordered array so item order is preserved for downstream analysis.
+ */
+export const TECH_AFFINITY_ITEM_COUNT = 4
+
+/**
+ * Self-reported demographics captured in the DEMOGRAPHICS phase, held
+ * verbatim in the global store and shipped on the finalize POST (and, for
+ * convenience, on the final telemetry POST too).
+ */
+export type Demographics = {
+  birthDate: string
+  education: string
+  passwordFrequency: string
+  techAffinity: number[]
+}
+
+export function emptyDemographics(): Demographics {
+  return {
+    birthDate: '',
+    education: '',
+    passwordFrequency: '',
+    techAffinity: [],
+  }
+}
+
+/**
+ * Attention-check probe captured inline at the top of `CompletionView`
+ * (birth-year re-verification). Persisted on the Participant record via
+ * the finalize POST (and mirrored onto the final telemetry POST when
+ * convenient).
+ */
+export type AttentionCheck = {
+  verificationYear: string
+  passedCheck: boolean
+}
+
+export function emptyAttentionCheck(): AttentionCheck {
+  return { verificationYear: '', passedCheck: false }
 }
 
 export type StudyPhase = 'day1' | 'day7'
@@ -128,7 +179,7 @@ export type FinalizeSubmission = {
   mTurkId: string
   /**
    * MTurk completion code shown to the participant on the terminal
-   * `CompletionView` (format: `Algopin-mta-XXXXXX`). Required — the
+   * `CompletionView` (format: `ALGOPIN-MTA-XXXXXX`). Required — the
    * backend rejects the submission without it so we can cross-reference
    * the paste on the HIT page against the study database.
    */
@@ -140,6 +191,17 @@ export type FinalizeSubmission = {
    */
   susAnswers?: SusAnswers
   phase?: StudyPhase
+  /**
+   * Participant-level demographics captured in the DEMOGRAPHICS phase.
+   * Optional so callers that don't have the data (e.g. legacy flows) can
+   * still finalize.
+   */
+  demographics?: Demographics
+  /**
+   * Attention-check probe captured inline at the top of `CompletionView`.
+   * Optional for the same reason as `demographics`.
+   */
+  attentionCheck?: AttentionCheck
 }
 
 export type FinalizeResponse = {
@@ -152,6 +214,8 @@ export type FinalizeResponse = {
     mTurkId: string
     basePin: string
     completionCode?: string
+    demographics?: Demographics
+    attentionCheck?: AttentionCheck
     finalize?: {
       day1?: { susAnswers?: number[]; completedAt: string }
       day7?: { susAnswers?: number[]; completedAt: string }

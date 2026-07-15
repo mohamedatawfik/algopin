@@ -15,6 +15,7 @@ import { studyTheme } from './theme'
 import { AlgoIntroView } from './views/AlgoIntroView'
 import { AlgorithmSetupView } from './views/AlgorithmSetupView'
 import { CompletionView } from './views/CompletionView'
+import { DemographicsView } from './views/DemographicsView'
 import { LockScreenView } from './views/LockScreenView'
 import { OnboardingView } from './views/OnboardingView'
 import { StaticSetupView } from './views/StaticSetupView'
@@ -63,6 +64,10 @@ function AppRoutes() {
       <StageNavigator />
       <Routes>
         <Route path={STAGE_ROUTES.ONBOARDING} element={<OnboardingView />} />
+        <Route
+          path={STAGE_ROUTES.DEMOGRAPHICS}
+          element={<DemographicsView />}
+        />
         <Route
           path={STAGE_ROUTES.STATIC_SETUP}
           element={<StaticSetupView />}

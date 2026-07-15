@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 import {
+  AttentionCheck,
+  Demographics,
+  emptyAttentionCheck,
+  emptyDemographics,
   fetchAlgorithms,
   finalizeParticipant as finalizeParticipantApi,
   initParticipant,
@@ -114,6 +118,19 @@ type StudyState = {
    */
   susAnswers: SusAnswers | null
   /**
+   * Self-reported demographics captured in the DEMOGRAPHICS phase
+   * (between ONBOARDING and STATIC_SETUP). Initialised to an empty
+   * `Demographics` record on session reset and mutated in place by
+   * `setDemographics`.
+   */
+  demographics: Demographics
+  /**
+   * Attention-check probe captured inline at the top of `CompletionView`
+   * (birth-year re-verification). Initialised to an empty record on
+   * session reset and mutated in place by `setAttentionCheck`.
+   */
+  attentionCheck: AttentionCheck
+  /**
    * Phase 1 finalization timestamp returned by the backend after a
    * successful POST /api/participant/finalize. `null` until the SUS has
    * been submitted.
@@ -143,6 +160,16 @@ type StudyState = {
    */
   incrementCurrentPhaseReturnCount: () => void
   setSusAnswers: (answers: SusAnswers | null) => void
+  /**
+   * Merge a partial update into the current `demographics` record. Fields
+   * omitted from `update` are preserved; call with the full object to
+   * overwrite atomically.
+   */
+  setDemographics: (update: Partial<Demographics>) => void
+  /**
+   * Merge a partial update into the current `attentionCheck` record.
+   */
+  setAttentionCheck: (update: Partial<AttentionCheck>) => void
   resetStudySession: () => void
 
   loadAlgorithms: (
@@ -159,7 +186,8 @@ type StudyState = {
    * POSTs the MTurk completion code (and, if a legacy caller still has
    * them, the Day-1 SUS answers) to /api/participant/finalize. On success
    * the `phase1FinalizedAt` timestamp is updated and any previous error
-   * is cleared.
+   * is cleared. Demographics and attention-check data are pulled from the
+   * store automatically so callers don't have to thread them through.
    */
   finalizeParticipant: (args: {
     completionCode: string
@@ -203,6 +231,8 @@ const initialState = {
   tempTelemetry: null as TempTelemetryPayload | null,
   currentPhaseReturnCount: 0,
   susAnswers: null as SusAnswers | null,
+  demographics: emptyDemographics(),
+  attentionCheck: emptyAttentionCheck(),
   phase1FinalizedAt: null as string | null,
   consentAccepted: false,
   lastTelemetryPostError: null as string | null,
@@ -276,6 +306,12 @@ export const useStudyStore = create<StudyState>((set, get) => ({
 
   setSusAnswers: (answers) => set({ susAnswers: answers }),
 
+  setDemographics: (update) =>
+    set({ demographics: { ...get().demographics, ...update } }),
+
+  setAttentionCheck: (update) =>
+    set({ attentionCheck: { ...get().attentionCheck, ...update } }),
+
   resetStudySession: () =>
     set({
       ...initialState,
@@ -285,6 +321,8 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       tempTelemetry: null,
       currentPhaseReturnCount: 0,
       susAnswers: null,
+      demographics: emptyDemographics(),
+      attentionCheck: emptyAttentionCheck(),
       phase1FinalizedAt: null,
       lastFinalizeError: null,
     }),
@@ -341,11 +379,14 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       return { ok: false, error: message }
     }
     try {
+      const { demographics, attentionCheck } = get()
       const res = await finalizeParticipantApi({
         mTurkId,
         completionCode,
         ...(susAnswers ? { susAnswers } : {}),
         phase: effectivePhase,
+        demographics,
+        attentionCheck,
       })
       const updates: Partial<StudyState> = { lastFinalizeError: null }
       if (effectivePhase === 'day1') {

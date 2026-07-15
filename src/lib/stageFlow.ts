@@ -2,6 +2,7 @@ import type { PinCondition } from '../store/studyStore'
 
 export type StudyStage =
   | 'ONBOARDING'
+  | 'DEMOGRAPHICS'
   | 'STATIC_SETUP'
   | 'BASELINE_TEST'
   | 'BASELINE_TAM'
@@ -25,12 +26,16 @@ export type StudyStage =
  * Canonical study pipeline. Each condition (Baseline / Low / Med / High)
  * runs the loop TEST -> TAM -> SUS; the SUS submission is what POSTs the
  * accumulated telemetry document for that condition to /api/telemetry.
+ * DEMOGRAPHICS sits between ONBOARDING and STATIC_SETUP so the participant
+ * self-reports background information before their PIN work begins.
  * ALGO_INTRO sits between BASELINE_SUS and LOW_SETUP so the participant
- * meets algorithmic PINs before the first algorithmic setup. COMPLETION
- * is the terminal stage after HIGH_SUS.
+ * meets algorithmic PINs before the first algorithmic setup. The terminal
+ * COMPLETION stage runs the final attention check inline (birth-year
+ * verification) and posts the participant-level finalize payload.
  */
 export const STAGE_ORDER: readonly StudyStage[] = [
   'ONBOARDING',
+  'DEMOGRAPHICS',
   'STATIC_SETUP',
   'BASELINE_TEST',
   'BASELINE_TAM',
@@ -53,6 +58,7 @@ export const STAGE_ORDER: readonly StudyStage[] = [
 
 export const STAGE_ROUTES: Record<StudyStage, string> = {
   ONBOARDING: '/',
+  DEMOGRAPHICS: '/demographics',
   STATIC_SETUP: '/static-setup',
   BASELINE_TEST: '/baseline-test',
   BASELINE_TAM: '/baseline-tam',

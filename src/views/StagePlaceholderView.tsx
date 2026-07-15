@@ -9,6 +9,7 @@ import {
 
 const STAGE_LABELS: Record<StudyStage, string> = {
   ONBOARDING: 'Onboarding',
+  DEMOGRAPHICS: 'Demographics',
   STATIC_SETUP: 'Static PIN setup',
   BASELINE_TEST: 'Baseline test',
   BASELINE_TAM: 'Baseline TAM',
@@ -30,6 +31,8 @@ const STAGE_LABELS: Record<StudyStage, string> = {
 }
 
 const STAGE_DESCRIPTIONS: Partial<Record<StudyStage, string>> = {
+  DEMOGRAPHICS:
+    'Answer a few background questions (birth date, education, how often you enter a passcode, and a short tech-affinity questionnaire) so we can describe our sample.',
   STATIC_SETUP:
     'Choose a 4-digit base PIN. This will be used as the static baseline and as the seed for the algorithmic conditions later.',
   ALGO_INTRO:

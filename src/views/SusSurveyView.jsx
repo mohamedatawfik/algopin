@@ -59,6 +59,7 @@ export function SusSurveyView() {
   const submitTelemetry = useStudyStore((s) => s.submitTelemetry)
   const advanceStage = useStudyStore((s) => s.advanceStage)
   const appendTelemetry = useStudyStore((s) => s.appendTelemetry)
+  const demographics = useStudyStore((s) => s.demographics)
 
   const [answers, setAnswers] = useState(buildEmptyAnswers)
   const [submitting, setSubmitting] = useState(false)
@@ -123,11 +124,15 @@ export function SusSurveyView() {
     // 2) Build the wire payload and POST it. Identity fields (`mTurkId`,
     //    `condition`) come from the store; every other field —
     //    lock-screen metrics, `tam`, `sus` — is whatever has accumulated
-    //    in `tempTelemetry` up to this point.
+    //    in `tempTelemetry` up to this point. On every SUS POST we also
+    //    include the participant-level `demographics` block collected in
+    //    the DEMOGRAPHICS phase so per-condition analyses can join on it
+    //    without a second lookup.
     const submission = {
       mTurkId,
       condition: currentCondition,
       ...nextTemp,
+      demographics,
     }
     const res = await submitTelemetry(submission)
 

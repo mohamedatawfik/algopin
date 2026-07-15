@@ -6,12 +6,68 @@ import Participant, {
   SUS_ITEM_COUNT,
   SUS_MAX,
   SUS_MIN,
+  TECH_AFFINITY_ITEM_COUNT,
 } from '../models/Participant.js'
 
 const router = Router()
 
 const PIN_REGEX = /^\d{4,8}$/
 const DEFAULT_FINALIZE_PHASE = 'day1'
+
+/**
+ * Normalize demographics-like sub-payloads to their canonical shape and
+ * reject clearly malformed values. Both blocks are optional on the wire.
+ */
+function normalizeDemographics(raw) {
+  if (raw == null) return { ok: true, value: undefined }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'demographics must be an object' }
+  }
+  const techAffinityRaw = raw.techAffinity
+  let techAffinity = []
+  if (techAffinityRaw !== undefined && techAffinityRaw !== null) {
+    if (!Array.isArray(techAffinityRaw)) {
+      return { ok: false, error: 'demographics.techAffinity must be an array' }
+    }
+    if (techAffinityRaw.length > TECH_AFFINITY_ITEM_COUNT) {
+      return {
+        ok: false,
+        error: `demographics.techAffinity must have at most ${TECH_AFFINITY_ITEM_COUNT} entries`,
+      }
+    }
+    for (let i = 0; i < techAffinityRaw.length; i += 1) {
+      const v = techAffinityRaw[i]
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        return {
+          ok: false,
+          error: `demographics.techAffinity[${i}] must be a finite number`,
+        }
+      }
+    }
+    techAffinity = techAffinityRaw
+  }
+  return {
+    ok: true,
+    value: {
+      birthDate: typeof raw.birthDate === 'string' ? raw.birthDate : '',
+      education: typeof raw.education === 'string' ? raw.education : '',
+      passwordFrequency:
+        typeof raw.passwordFrequency === 'string' ? raw.passwordFrequency : '',
+      techAffinity,
+    },
+  }
+}
+
+function normalizeAttentionCheck(raw) {
+  if (raw == null) return { ok: true, value: undefined }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'attentionCheck must be an object' }
+  }
+  const verificationYear =
+    typeof raw.verificationYear === 'string' ? raw.verificationYear : ''
+  const passedCheck = Boolean(raw.passedCheck)
+  return { ok: true, value: { verificationYear, passedCheck } }
+}
 
 function validateSusAnswers(raw) {
   if (!Array.isArray(raw) || raw.length !== SUS_ITEM_COUNT) {
@@ -113,8 +169,17 @@ router.post('/finalize', async (req, res, next) => {
     if (!COMPLETION_CODE_REGEX.test(body.completionCode)) {
       return res.status(400).json({
         error:
-          'completionCode must match Algopin-mta-XXXXXX (6 uppercase alphanumeric chars)',
+          'completionCode must match ALGOPIN-MTA-XXXXXX (6 uppercase alphanumeric chars)',
       })
+    }
+
+    const demographics = normalizeDemographics(body.demographics)
+    if (!demographics.ok) {
+      return res.status(400).json({ error: demographics.error })
+    }
+    const attentionCheck = normalizeAttentionCheck(body.attentionCheck)
+    if (!attentionCheck.ok) {
+      return res.status(400).json({ error: attentionCheck.error })
     }
 
     const trimmedId = body.mTurkId.trim()
@@ -125,14 +190,20 @@ router.post('/finalize', async (req, res, next) => {
       finalizePayload.susAnswers = susValue
     }
 
+    const setUpdate = {
+      completionCode: body.completionCode,
+      [`finalize.${phase}`]: finalizePayload,
+    }
+    if (demographics.value !== undefined) {
+      setUpdate.demographics = demographics.value
+    }
+    if (attentionCheck.value !== undefined) {
+      setUpdate.attentionCheck = attentionCheck.value
+    }
+
     const participant = await Participant.findOneAndUpdate(
       { mTurkId: trimmedId },
-      {
-        $set: {
-          completionCode: body.completionCode,
-          [`finalize.${phase}`]: finalizePayload,
-        },
-      },
+      { $set: setUpdate },
       { new: true, runValidators: true }
     )
 

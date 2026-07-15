@@ -161,16 +161,19 @@ type StudyState = {
     submission: TelemetrySubmission
   ) => Promise<{ ok: boolean; id?: string; error?: string }>
   /**
-   * Persists the SUS answers locally and POSTs them to
-   * /api/participant/finalize. On success the `phase1FinalizedAt` timestamp
-   * is updated and any previous error is cleared.
+   * POSTs the MTurk completion code (and, if a legacy caller still has
+   * them, the Day-1 SUS answers) to /api/participant/finalize. On success
+   * the `phase1FinalizedAt` timestamp is updated and any previous error
+   * is cleared.
    */
-  finalizeParticipant: (
-    answers: SusAnswers,
-    options?: { phase?: StudyPhase }
-  ) => Promise<{
+  finalizeParticipant: (args: {
+    completionCode: string
+    susAnswers?: SusAnswers
+    phase?: StudyPhase
+  }) => Promise<{
     ok: boolean
     completedAt?: string
+    completionCode?: string
     error?: string
   }>
 }
@@ -333,9 +336,9 @@ export const useStudyStore = create<StudyState>((set, get) => ({
     }
   },
 
-  finalizeParticipant: async (answers, options) => {
-    const phase: StudyPhase = options?.phase ?? 'day1'
-    set({ susAnswers: answers })
+  finalizeParticipant: async ({ completionCode, susAnswers, phase }) => {
+    const effectivePhase: StudyPhase = phase ?? 'day1'
+    if (susAnswers) set({ susAnswers })
     const mTurkId = get().mTurkId
     if (!mTurkId) {
       const message = 'mTurkId is missing; cannot finalize participant'
@@ -345,15 +348,20 @@ export const useStudyStore = create<StudyState>((set, get) => ({
     try {
       const res = await finalizeParticipantApi({
         mTurkId,
-        susAnswers: answers,
-        phase,
+        completionCode,
+        ...(susAnswers ? { susAnswers } : {}),
+        phase: effectivePhase,
       })
       const updates: Partial<StudyState> = { lastFinalizeError: null }
-      if (phase === 'day1') {
+      if (effectivePhase === 'day1') {
         updates.phase1FinalizedAt = res.completedAt
       }
       set(updates)
-      return { ok: true, completedAt: res.completedAt }
+      return {
+        ok: true,
+        completedAt: res.completedAt,
+        completionCode: res.completionCode,
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Failed to finalize participant'

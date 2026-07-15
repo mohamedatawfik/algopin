@@ -1,6 +1,7 @@
 import { Router } from 'express'
 
 import Participant, {
+  COMPLETION_CODE_REGEX,
   STUDY_PHASES,
   SUS_ITEM_COUNT,
   SUS_MAX,
@@ -90,22 +91,46 @@ router.post('/finalize', async (req, res, next) => {
       })
     }
 
-    const sus = validateSusAnswers(body.susAnswers)
-    if (!sus.ok) {
-      return res.status(400).json({ error: sus.error })
+    // `susAnswers` is legacy — the current study collects SUS per
+    // condition through /api/telemetry. Only validate it if the client
+    // still bothers to send it.
+    let susValue
+    if (body.susAnswers !== undefined && body.susAnswers !== null) {
+      const sus = validateSusAnswers(body.susAnswers)
+      if (!sus.ok) {
+        return res.status(400).json({ error: sus.error })
+      }
+      susValue = sus.value
+    }
+
+    // The MTurk completion code is required from `CompletionView` — this
+    // is the token we cross-reference against the paste on the HIT page.
+    if (typeof body.completionCode !== 'string') {
+      return res
+        .status(400)
+        .json({ error: 'completionCode is required' })
+    }
+    if (!COMPLETION_CODE_REGEX.test(body.completionCode)) {
+      return res.status(400).json({
+        error:
+          'completionCode must match Algopin-mta-XXXXXX (6 uppercase alphanumeric chars)',
+      })
     }
 
     const trimmedId = body.mTurkId.trim()
     const completedAt = new Date()
 
+    const finalizePayload = { completedAt }
+    if (susValue !== undefined) {
+      finalizePayload.susAnswers = susValue
+    }
+
     const participant = await Participant.findOneAndUpdate(
       { mTurkId: trimmedId },
       {
         $set: {
-          [`finalize.${phase}`]: {
-            susAnswers: sus.value,
-            completedAt,
-          },
+          completionCode: body.completionCode,
+          [`finalize.${phase}`]: finalizePayload,
         },
       },
       { new: true, runValidators: true }
@@ -121,6 +146,7 @@ router.post('/finalize', async (req, res, next) => {
       ok: true,
       phase,
       completedAt: completedAt.toISOString(),
+      completionCode: body.completionCode,
       participant: participant.toObject(),
     })
   } catch (err) {

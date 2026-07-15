@@ -126,7 +126,19 @@ export type SusAnswers = number[]
 
 export type FinalizeSubmission = {
   mTurkId: string
-  susAnswers: SusAnswers
+  /**
+   * MTurk completion code shown to the participant on the terminal
+   * `CompletionView` (format: `Algopin-mta-XXXXXX`). Required — the
+   * backend rejects the submission without it so we can cross-reference
+   * the paste on the HIT page against the study database.
+   */
+  completionCode: string
+  /**
+   * Legacy Day-1 SUS payload. The current study collects SUS
+   * per-condition via `/api/telemetry`, so this is optional and normally
+   * omitted from the finalize call.
+   */
+  susAnswers?: SusAnswers
   phase?: StudyPhase
 }
 
@@ -134,13 +146,15 @@ export type FinalizeResponse = {
   ok: boolean
   phase: StudyPhase
   completedAt: string
+  completionCode: string
   participant: {
     _id: string
     mTurkId: string
     basePin: string
+    completionCode?: string
     finalize?: {
-      day1?: { susAnswers: number[]; completedAt: string }
-      day7?: { susAnswers: number[]; completedAt: string }
+      day1?: { susAnswers?: number[]; completedAt: string }
+      day7?: { susAnswers?: number[]; completedAt: string }
     }
     createdAt?: string
   }

@@ -41,9 +41,9 @@ const EXAMPLES: {
     icon: <CalculateRounded fontSize="small" />,
     title: 'High Complexity',
     description:
-      'The last digit of the minute is added to (the last digit of the battery multiplied by 3).',
+      'The last digit of the minute is added to the last digit of the battery, then that sum is multiplied by 3.',
     example:
-      'If the time is 14:27 and battery is 82%, the math is 7 + (2 × 3) = 13. Using only the last digit (3), base PIN 1234 becomes 1233.',
+      'If the time is 14:27 and battery is 82%, the math is (7 + 2) × 3 = 27. Using only the last digit (7), base PIN 1234 becomes 1237.',
   },
 ]
 

@@ -23,7 +23,7 @@ const ALGORITHMS = [
     complexity: 'High',
     type: 'MINUTE_PLUS_TRIPLE_BATTERY',
     description:
-      'Replace the last digit of the base PIN with the last digit of (the current minute plus three times the battery percentage digit). If the result is two digits, use only the last digit so the PIN length stays the same.',
+      'Replace the last digit of the base PIN with the last digit of ((minute + battery) × 3). Add the last digits of the minute and battery first, then multiply that sum by 3. If the result is two digits, use only the last digit so the PIN length stays the same.',
   },
 ]
 

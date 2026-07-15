@@ -61,7 +61,7 @@ const PLACEHOLDER_BY_TYPE: Record<AlgorithmType, string> = {
 const PLACEHOLDER_DESCRIPTION_BY_TYPE: Record<AlgorithmType, string> = {
   MINUTE_DIGIT: 'the last digit of the minute',
   MINUTE_PLUS_BATTERY: 'the last digit of (Minute + Battery)',
-  MINUTE_PLUS_TRIPLE_BATTERY: 'the last digit of (Minute + (Battery x 3))',
+  MINUTE_PLUS_TRIPLE_BATTERY: 'the last digit of ((Minute + Battery) x 3)',
 }
 
 export function placeholderForType(type: AlgorithmType): string {
@@ -101,7 +101,7 @@ export function computeRawSum(
     case 'MINUTE_PLUS_BATTERY':
       return d + b
     case 'MINUTE_PLUS_TRIPLE_BATTERY':
-      return d + 3 * b
+      return (d + b) * 3
   }
 }
 

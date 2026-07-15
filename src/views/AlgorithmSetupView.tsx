@@ -59,9 +59,9 @@ const RULE_INFO_BY_COMPLEXITY: Record<
       'For this phase, add the last digit of the minute to the last digit of the battery percentage. If the result is a double-digit number, use only the last digit. Example: at 12:47 with 89% battery, 7 + 9 = 16. Using only the last digit (6), your dynamic value is 6.',
   },
   High: {
-    title: 'Minute + (Battery x 3)',
+    title: '(Minute + Battery) x 3',
     description:
-      'For this phase, multiply the last digit of the battery percentage by 3, then add it to the last digit of the minute. If the result is a double-digit number, use only the last digit. Example: at 12:47 with 82% battery, the math is 7 + (2 * 3) = 13. Using only the last digit (3), your dynamic value is 3.',
+      'For this phase, first add the last digit of the minute to the last digit of the battery percentage. Then, multiply that total by 3. If the final result is a double-digit number, use only the last digit. Example: at 12:47 with 82% battery, first add 7 + 2 to get 9. Then multiply 9 x 3 to get 27. Using only the last digit (7), your dynamic value is 7.',
   },
 }
 
@@ -101,17 +101,18 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   }, [])
 
   // The setup preview uses a fixed sample battery so participants see a
-  // stable worked example while they read the rule. The lock screen will
-  // evaluate the rule against the *actual* battery level shown in its
+  // stable worked example while they read the rule. High uses 82% to
+  // match the assigned-rule worked example; Medium/Low use 89%. The
+  // lock screen evaluates against the *actual* battery shown in its
   // status bar.
-  const sampleBatteryLevel = 89
+  const sampleBatteryLevel = complexity === 'High' ? 82 : 89
   const dynamicValue = useMemo(
     () =>
       computeDynamicValue(algorithmType, {
         date: now,
         batteryLevel: sampleBatteryLevel,
       }),
-    [algorithmType, now]
+    [algorithmType, now, sampleBatteryLevel]
   )
   const rawSum = useMemo(
     () =>
@@ -119,7 +120,7 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
         date: now,
         batteryLevel: sampleBatteryLevel,
       }),
-    [algorithmType, now]
+    [algorithmType, now, sampleBatteryLevel]
   )
 
   const currentMinuteDigit = now.getMinutes() % 10
@@ -298,8 +299,10 @@ function buildLiveCaption(
       return `uses the current value (${dynamicValue}) — the last digit of the minute is ${minuteDigit}`
     case 'MINUTE_PLUS_BATTERY':
       return `uses the current value (${dynamicValue}) — Example battery ${sampleBatteryLevel}%, so ${minuteDigit} + ${batteryDigit} = ${rawSum}. Using the last digit gives ${dynamicValue}.`
-    case 'MINUTE_PLUS_TRIPLE_BATTERY':
-      return `uses the current value (${dynamicValue}) — Example battery ${sampleBatteryLevel}%, so ${minuteDigit} + (${batteryDigit} * 3) = ${rawSum}. Using the last digit gives ${dynamicValue}.`
+    case 'MINUTE_PLUS_TRIPLE_BATTERY': {
+      const digitSum = minuteDigit + batteryDigit
+      return `uses the current value (${dynamicValue}) — Example battery ${sampleBatteryLevel}%, so (${minuteDigit} + ${batteryDigit}) = ${digitSum}. Then ${digitSum} x 3 = ${rawSum}. Using the last digit gives ${dynamicValue}.`
+    }
   }
 }
 

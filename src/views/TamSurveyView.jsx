@@ -12,7 +12,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStudyStore } from '../store/studyStore'
 
 /**
@@ -50,6 +50,10 @@ export function TamSurveyView() {
   const appendTelemetry = useStudyStore((s) => s.appendTelemetry)
   const currentStage = useStudyStore((s) => s.currentStage)
   const currentCondition = useStudyStore((s) => s.currentCondition)
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
 
   const [answers, setAnswers] = useState(buildEmptyAnswers)
   const [submitting, setSubmitting] = useState(false)

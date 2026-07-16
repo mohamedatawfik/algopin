@@ -12,7 +12,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStudyStore } from '../store/studyStore'
 
 /**
@@ -60,6 +60,10 @@ export function SusSurveyView() {
   const advanceStage = useStudyStore((s) => s.advanceStage)
   const appendTelemetry = useStudyStore((s) => s.appendTelemetry)
   const demographics = useStudyStore((s) => s.demographics)
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
 
   const [answers, setAnswers] = useState(buildEmptyAnswers)
   const [submitting, setSubmitting] = useState(false)

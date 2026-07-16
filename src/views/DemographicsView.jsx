@@ -15,7 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStudyStore } from '../store/studyStore'
 
 /**
@@ -116,6 +116,10 @@ export function DemographicsView() {
   const setDemographics = useStudyStore((s) => s.setDemographics)
   const appendTelemetry = useStudyStore((s) => s.appendTelemetry)
   const advanceStage = useStudyStore((s) => s.advanceStage)
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
 
   const initialDob = useMemo(() => parseBirthDate(demographics.birthDate), [
     demographics.birthDate,

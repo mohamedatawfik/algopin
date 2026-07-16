@@ -92,6 +92,10 @@ export function AlgorithmSetupView({ complexity }: AlgorithmSetupViewProps) {
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
+
+  useEffect(() => {
     appendTelemetry('algorithm_setup_opened', { complexity, algorithmType })
   }, [appendTelemetry, complexity, algorithmType])
 

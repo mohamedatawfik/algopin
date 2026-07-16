@@ -51,6 +51,10 @@ export function AlgoIntroView() {
   const { advanceStage, appendTelemetry } = useStudyStore()
 
   useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
+
+  useEffect(() => {
     appendTelemetry('algo_intro_opened')
   }, [appendTelemetry])
 

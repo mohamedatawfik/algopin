@@ -86,11 +86,12 @@ export type SusAnswersPerCondition = {
 
 /**
  * The exact JSON body POSTed to /api/telemetry once a condition is fully
- * complete (lock screen + TAM + SUS). Identity (`mTurkId`, `condition`) is
- * supplied by `SusSurveyView` from the global store; lock-screen metrics
- * were written to `tempTelemetry` at unlock success; `tam` was appended by
- * `TamSurveyView`; `sus` is appended by `SusSurveyView` right before this
- * POST is dispatched.
+ * complete. For algorithmic conditions that is lock screen + TAM + SUS.
+ * For Baseline it is lock-screen metrics only (no surveys). Identity
+ * (`mTurkId`, `condition`) comes from the store; lock-screen metrics were
+ * written to `tempTelemetry` at unlock success. Algorithmic conditions
+ * append `tam` via `TamSurveyView` and `sus` via `SusSurveyView` before
+ * the POST; Baseline POSTs directly from `LockScreenView`.
  */
 export type TelemetrySubmission = {
   mTurkId: string
@@ -108,8 +109,10 @@ export type TelemetrySubmission = {
   returnCount: number
   submittedErrors: string[]
   keystrokeLog: Keystroke[]
-  tam: TamAnswers
-  sus: SusAnswersPerCondition
+  /** Present for Low / Medium / High; omitted for Baseline. */
+  tam?: TamAnswers
+  /** Present for Low / Medium / High; omitted for Baseline. */
+  sus?: SusAnswersPerCondition
   /**
    * Optional participant-level blocks. Included by the frontend on the
    * final per-condition telemetry POST so per-condition analyses can join

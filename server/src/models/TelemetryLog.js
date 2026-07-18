@@ -8,10 +8,10 @@ export const KEY_KINDS = ['digit', 'clear', 'cancel', 'return']
 
 /**
  * Technology-Acceptance-Model (TAM) items administered immediately after
- * each `*_TEST` phase. Frontend renders 5 items on a 1..7 Likert scale;
- * each is persisted as a named integer field inside the `tam` subdoc so
- * the survey structure is self-describing in the DB, mirroring how the
- * (removed) `nasaTlx` subdoc used named dimensions.
+ * each algorithmic `*_TEST` phase (Low / Medium / High). Baseline skips
+ * TAM. Frontend renders 5 items on a 1..7 Likert scale; each is persisted
+ * as a named integer field inside the `tam` subdoc so the survey structure
+ * is self-describing in the DB.
  */
 export const TAM_ITEM_COUNT = 5
 export const TAM_MIN = 1
@@ -19,9 +19,10 @@ export const TAM_MAX = 7
 export const TAM_FIELDS = ['item1', 'item2', 'item3', 'item4', 'item5']
 
 /**
- * System-Usability-Scale items administered per condition, right after
- * the TAM survey. 10 canonical Brooke items on a 1..5 Likert scale, each
- * persisted as a named integer field inside the `sus` subdoc.
+ * System-Usability-Scale items administered per algorithmic condition,
+ * right after the TAM survey. Baseline skips SUS. 10 canonical Brooke
+ * items on a 1..5 Likert scale, each persisted as a named integer field
+ * inside the `sus` subdoc.
  */
 export const SUS_ITEM_COUNT = 10
 export const SUS_MIN = 1
@@ -164,13 +165,12 @@ const telemetryLogSchema = new Schema(
     submittedErrors: { type: [String], default: [] },
     keystrokeLog: { type: [keystrokeSchema], default: [] },
     /**
-     * Two distinct per-phase survey subdocs. Both are required — a
-     * telemetry document only lands here after the participant submits
-     * the SUS for the matching `*_TEST` condition, at which point both
-     * `tam` and `sus` are guaranteed to be present on the payload.
+     * Per-phase survey subdocs. Required for Low / Medium / High (POSTed
+     * after *_SUS). Optional for Baseline, which records lock-screen
+     * metrics only and skips TAM/SUS.
      */
-    tam: { type: tamSchema, required: true },
-    sus: { type: susSchema, required: true },
+    tam: { type: tamSchema, required: false },
+    sus: { type: susSchema, required: false },
     /**
      * Participant-level demographics collected once in the DEMOGRAPHICS
      * phase. Optional on any given telemetry doc because the same values

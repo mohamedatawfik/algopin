@@ -122,24 +122,60 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'totalAuthTime must be a number' })
     }
 
-    const tam = validateNamedLikertBlock(body.tam, {
-      name: 'tam',
-      fieldNames: TAM_FIELDS,
-      min: TAM_MIN,
-      max: TAM_MAX,
-    })
-    if (!tam.ok) {
-      return res.status(400).json({ error: tam.error })
-    }
+    // Baseline skips TAM/SUS and POSTs lock-screen metrics only.
+    // Algorithmic conditions still require both survey subdocs.
+    const isBaseline = condition === 'Baseline'
+    let tamValue
+    let susValue
 
-    const sus = validateNamedLikertBlock(body.sus, {
-      name: 'sus',
-      fieldNames: SUS_FIELDS,
-      min: SUS_MIN,
-      max: SUS_MAX,
-    })
-    if (!sus.ok) {
-      return res.status(400).json({ error: sus.error })
+    if (isBaseline) {
+      if (body.tam != null) {
+        const tam = validateNamedLikertBlock(body.tam, {
+          name: 'tam',
+          fieldNames: TAM_FIELDS,
+          min: TAM_MIN,
+          max: TAM_MAX,
+        })
+        if (!tam.ok) {
+          return res.status(400).json({ error: tam.error })
+        }
+        tamValue = tam.value
+      }
+      if (body.sus != null) {
+        const sus = validateNamedLikertBlock(body.sus, {
+          name: 'sus',
+          fieldNames: SUS_FIELDS,
+          min: SUS_MIN,
+          max: SUS_MAX,
+        })
+        if (!sus.ok) {
+          return res.status(400).json({ error: sus.error })
+        }
+        susValue = sus.value
+      }
+    } else {
+      const tam = validateNamedLikertBlock(body.tam, {
+        name: 'tam',
+        fieldNames: TAM_FIELDS,
+        min: TAM_MIN,
+        max: TAM_MAX,
+      })
+      if (!tam.ok) {
+        return res.status(400).json({ error: tam.error })
+      }
+
+      const sus = validateNamedLikertBlock(body.sus, {
+        name: 'sus',
+        fieldNames: SUS_FIELDS,
+        min: SUS_MIN,
+        max: SUS_MAX,
+      })
+      if (!sus.ok) {
+        return res.status(400).json({ error: sus.error })
+      }
+
+      tamValue = tam.value
+      susValue = sus.value
     }
 
     const demographics = normalizeDemographicsBlock(body.demographics)
@@ -164,8 +200,8 @@ router.post('/', async (req, res, next) => {
         ? body.submittedErrors
         : [],
       keystrokeLog: Array.isArray(body.keystrokeLog) ? body.keystrokeLog : [],
-      tam: tam.value,
-      sus: sus.value,
+      ...(tamValue ? { tam: tamValue } : {}),
+      ...(susValue ? { sus: susValue } : {}),
       ...(demographics ? { demographics } : {}),
       ...(attentionCheck ? { attentionCheck } : {}),
       completedAt: body.completedAt,

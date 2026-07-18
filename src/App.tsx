@@ -73,8 +73,6 @@ function AppRoutes() {
           element={<StaticSetupView />}
         />
         <Route path={STAGE_ROUTES.BASELINE_TEST} element={<LockScreenView />} />
-        <Route path={STAGE_ROUTES.BASELINE_TAM} element={<TamSurveyView />} />
-        <Route path={STAGE_ROUTES.BASELINE_SUS} element={<SusSurveyView />} />
         <Route path={STAGE_ROUTES.ALGO_INTRO} element={<AlgoIntroView />} />
         <Route
           path={STAGE_ROUTES.LOW_SETUP}

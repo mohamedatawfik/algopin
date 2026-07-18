@@ -101,6 +101,9 @@ export function LockScreenView() {
     advanceStage,
     setStage,
     setTempTelemetry,
+    clearTempTelemetry,
+    submitTelemetry,
+    demographics,
     currentPhaseReturnCount,
     incrementCurrentPhaseReturnCount,
   } = useStudyStore()
@@ -110,6 +113,7 @@ export function LockScreenView() {
   const [errorCount, setErrorCount] = useState(0)
   const [shakeKey, setShakeKey] = useState(0)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [telemetryError, setTelemetryError] = useState<string | null>(null)
 
   const successTimerRef = useRef<number | null>(null)
   const telemetry = useLockScreenTelemetry()
@@ -197,12 +201,10 @@ export function LockScreenView() {
           totalAuthTime: submission.totalAuthTime,
           timeToFirstTouch: submission.timeToFirstTouch,
         })
-        // The lock screen no longer talks to /api/telemetry directly. We
-        // compile just the performance metrics the survey views need and
-        // stash them in tempTelemetry; the TAM view then appends `tam`,
-        // and the SUS view appends `sus` and merges in mTurkId + condition
-        // before POSTing. The richer localStorage record was already
-        // written by `recordSuccess` above.
+        // Compile lock-screen performance metrics. Baseline POSTs these
+        // immediately (no TAM/SUS). Algorithmic conditions stash them in
+        // tempTelemetry; TamSurveyView appends `tam`, and SusSurveyView
+        // appends `sus` + identity before POSTing.
         const metrics: LockScreenMetrics = {
           renderTimestamp: submission.renderTimestamp,
           timeToFirstTouch: submission.timeToFirstTouch,
@@ -213,14 +215,56 @@ export function LockScreenView() {
           keystrokeLog: submission.keystrokeLog,
         }
         setTempTelemetry(metrics)
+        setTelemetryError(null)
         setShowSuccess(true)
-        successTimerRef.current = window.setTimeout(() => {
-          // STAGE_ORDER pairs every *_TEST stage with its *_TAM successor,
-          // so advancing here lands the participant on the matching TAM
-          // survey (e.g. LOW_TEST -> LOW_TAM, MED_TEST -> MED_TAM). The
-          // TAM view then advances to *_SUS, which POSTs telemetry.
-          advanceStage()
-        }, SUCCESS_NAVIGATE_DELAY_MS)
+
+        if (currentStage === 'BASELINE_TEST') {
+          // Baseline skips surveys: POST metrics now, then go to ALGO_INTRO.
+          void (async () => {
+            if (!mTurkId) {
+              setShowSuccess(false)
+              setTelemetryError(
+                'Your MTurk Worker ID is missing; please reload the study from the original link.'
+              )
+              return
+            }
+            const baselineSubmission = {
+              mTurkId,
+              condition: currentCondition,
+              ...metrics,
+              demographics,
+            }
+            const res = await submitTelemetry(baselineSubmission)
+            if (!res.ok) {
+              appendTelemetry('telemetry_post_failed', {
+                stage: currentStage,
+                condition: currentCondition,
+                error: res.error,
+              })
+              setShowSuccess(false)
+              setTelemetryError(
+                res.error ?? 'Could not save your responses. Please try again.'
+              )
+              return
+            }
+            appendTelemetry('telemetry_post_ok', {
+              stage: currentStage,
+              condition: currentCondition,
+              id: res.id,
+            })
+            clearTempTelemetry()
+            successTimerRef.current = window.setTimeout(() => {
+              advanceStage()
+            }, SUCCESS_NAVIGATE_DELAY_MS)
+          })()
+        } else {
+          successTimerRef.current = window.setTimeout(() => {
+            // STAGE_ORDER pairs every algorithmic *_TEST with its *_TAM
+            // successor (e.g. LOW_TEST -> LOW_TAM). The TAM view then
+            // advances to *_SUS, which POSTs telemetry.
+            advanceStage()
+          }, SUCCESS_NAVIGATE_DELAY_MS)
+        }
       } else {
         const nextErrors = errorCount + 1
         setErrorCount(nextErrors)
@@ -244,13 +288,16 @@ export function LockScreenView() {
       appendTelemetry,
       basePin,
       battery,
+      clearTempTelemetry,
       currentCondition,
       currentPhaseReturnCount,
       currentStage,
+      demographics,
       errorCount,
       mTurkId,
       resolvedConfig,
       setTempTelemetry,
+      submitTelemetry,
       telemetry,
     ]
   )
@@ -549,7 +596,24 @@ export function LockScreenView() {
           icon={<LockRounded />}
           sx={{ borderRadius: 3, fontWeight: 600 }}
         >
-          Unlocked — opening survey
+          {currentStage === 'BASELINE_TEST'
+            ? 'Unlocked — continuing'
+            : 'Unlocked — opening survey'}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        open={Boolean(telemetryError)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        onClose={() => setTelemetryError(null)}
+      >
+        <Alert
+          severity="error"
+          variant="filled"
+          onClose={() => setTelemetryError(null)}
+          sx={{ borderRadius: 3 }}
+        >
+          {telemetryError}
         </Alert>
       </Snackbar>
     </Box>

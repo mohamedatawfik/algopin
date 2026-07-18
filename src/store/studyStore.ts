@@ -18,7 +18,7 @@ import {
 import {
   AlgorithmComplexity,
   conditionForStage,
-  isSusStage,
+  isConditionClosingStage,
   nextStage,
   StudyStage,
 } from '../lib/stageFlow'
@@ -74,10 +74,12 @@ import type { LockScreenMetrics } from '../hooks/useLockScreenTelemetry'
  *   TAM  -> appends `tam` (named-field subdoc: item1..item5, each 1..7)
  *   SUS  -> appends `sus` (named-field subdoc: item1..item10, each 1..5)
  *
- * `SusSurveyView` then merges `mTurkId` + `condition` into this
- * accumulator, POSTs the combined payload to /api/telemetry, and only on
- * a successful write calls `clearTempTelemetry()`. The outer `Partial<>`
- * exists so a defensive `SusSurveyView` retry doesn't require a full
+ * Baseline skips TAM/SUS: `LockScreenView` POSTs lock-screen metrics
+ * directly after BASELINE_TEST. For algorithmic conditions,
+ * `SusSurveyView` merges `mTurkId` + `condition` into this accumulator,
+ * POSTs the combined payload to /api/telemetry, and only on a successful
+ * write calls `clearTempTelemetry()`. The outer `Partial<>` exists so a
+ * defensive `SusSurveyView` retry doesn't require a full
  * `LockScreenMetrics` snapshot to be present.
  */
 export type TempTelemetryPayload = Partial<LockScreenMetrics> & {
@@ -95,10 +97,11 @@ type StudyState = {
   telemetry: TelemetryEntry[]
   /**
    * The per-condition telemetry accumulator (see `TempTelemetryPayload`).
-   * Written first by `LockScreenView` at unlock success, then extended
-   * with `tam` by `TamSurveyView` and `sus` by `SusSurveyView`. The `*_SUS`
-   * submission POSTs the merged payload; the slot is cleared only after
-   * that POST succeeds.
+   * Written first by `LockScreenView` at unlock success. For algorithmic
+   * conditions it is then extended with `tam` by `TamSurveyView` and
+   * `sus` by `SusSurveyView`; the `*_SUS` submission POSTs the merged
+   * payload. For Baseline, `LockScreenView` POSTs metrics immediately
+   * (no surveys). The slot is cleared only after a successful POST.
    */
   tempTelemetry: TempTelemetryPayload | null
   /**
@@ -107,8 +110,9 @@ type StudyState = {
    * `returnCount` on the telemetry payload at unlock-success time. The
    * counter persists across the SETUP ↔ TEST bounce within a phase (e.g.
    * LOW_TEST → LOW_SETUP → LOW_TEST keeps accumulating) and only resets to
-   * zero when the participant finishes the matching `*_SUS` survey and
-   * the stage advances into the next phase (see `advanceStage`).
+   * zero when the participant finishes the matching condition
+   * (`BASELINE_TEST` or `*_SUS`) and the stage advances into the next
+   * phase (see `advanceStage`).
    */
   currentPhaseReturnCount: number
   /**
@@ -263,14 +267,13 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       currentStage: next,
       currentCondition: conditionForStage(next) ?? get().currentCondition,
     }
-    // Only reset the return counter when the participant finishes the
-    // SUS survey for the current condition, since that's the moment its
-    // telemetry document is POSTed and the phase officially closes.
-    // Bouncing between *_SETUP and *_TEST via the lock-screen "Return"
-    // button uses setStage(), which intentionally leaves this counter
-    // untouched so a single phase's working-memory failures accumulate
-    // across multiple back-and-forth trips.
-    if (isSusStage(current)) {
+    // Reset the return counter when the participant finishes a condition
+    // (BASELINE_TEST POSTs metrics itself; algorithmic conditions close
+    // on *_SUS). Bouncing between *_SETUP and *_TEST via the lock-screen
+    // "Return" button uses setStage(), which intentionally leaves this
+    // counter untouched so a single phase's working-memory failures
+    // accumulate across multiple back-and-forth trips.
+    if (isConditionClosingStage(current)) {
       updates.currentPhaseReturnCount = 0
     }
     set(updates)

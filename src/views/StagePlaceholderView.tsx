@@ -12,8 +12,6 @@ const STAGE_LABELS: Record<StudyStage, string> = {
   DEMOGRAPHICS: 'Demographics',
   STATIC_SETUP: 'Static PIN setup',
   BASELINE_TEST: 'Baseline test',
-  BASELINE_TAM: 'Baseline TAM',
-  BASELINE_SUS: 'Baseline SUS',
   ALGO_INTRO: 'Algorithmic PIN introduction',
   LOW_SETUP: 'Low complexity setup',
   LOW_TEST: 'Low complexity test',

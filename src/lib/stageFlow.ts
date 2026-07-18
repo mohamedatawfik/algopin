@@ -5,8 +5,6 @@ export type StudyStage =
   | 'DEMOGRAPHICS'
   | 'STATIC_SETUP'
   | 'BASELINE_TEST'
-  | 'BASELINE_TAM'
-  | 'BASELINE_SUS'
   | 'ALGO_INTRO'
   | 'LOW_SETUP'
   | 'LOW_TEST'
@@ -23,12 +21,13 @@ export type StudyStage =
   | 'COMPLETION'
 
 /**
- * Canonical study pipeline. Each condition (Baseline / Low / Med / High)
- * runs the loop TEST -> TAM -> SUS; the SUS submission is what POSTs the
- * accumulated telemetry document for that condition to /api/telemetry.
+ * Canonical study pipeline. Baseline skips TAM/SUS: BASELINE_TEST POSTs
+ * lock-screen metrics and advances straight to ALGO_INTRO. Algorithmic
+ * conditions (Low / Med / High) still run TEST -> TAM -> SUS; the SUS
+ * submission POSTs the accumulated telemetry document for that condition.
  * DEMOGRAPHICS sits between ONBOARDING and STATIC_SETUP so the participant
  * self-reports background information before their PIN work begins.
- * ALGO_INTRO sits between BASELINE_SUS and LOW_SETUP so the participant
+ * ALGO_INTRO sits between BASELINE_TEST and LOW_SETUP so the participant
  * meets algorithmic PINs before the first algorithmic setup. The terminal
  * COMPLETION stage runs the final attention check inline (birth-year
  * verification) and posts the participant-level finalize payload.
@@ -38,8 +37,6 @@ export const STAGE_ORDER: readonly StudyStage[] = [
   'DEMOGRAPHICS',
   'STATIC_SETUP',
   'BASELINE_TEST',
-  'BASELINE_TAM',
-  'BASELINE_SUS',
   'ALGO_INTRO',
   'LOW_SETUP',
   'LOW_TEST',
@@ -61,8 +58,6 @@ export const STAGE_ROUTES: Record<StudyStage, string> = {
   DEMOGRAPHICS: '/demographics',
   STATIC_SETUP: '/static-setup',
   BASELINE_TEST: '/baseline-test',
-  BASELINE_TAM: '/baseline-tam',
-  BASELINE_SUS: '/baseline-sus',
   ALGO_INTRO: '/algo-intro',
   LOW_SETUP: '/low-setup',
   LOW_TEST: '/low-test',
@@ -84,8 +79,6 @@ export type AlgorithmComplexity = Exclude<PinCondition, 'Baseline'>
 export function conditionForStage(stage: StudyStage): PinCondition | null {
   switch (stage) {
     case 'BASELINE_TEST':
-    case 'BASELINE_TAM':
-    case 'BASELINE_SUS':
       return 'Baseline'
     case 'LOW_TEST':
     case 'LOW_TAM':
@@ -142,24 +135,28 @@ export function isTestStage(stage: StudyStage): boolean {
 
 export function isTamStage(stage: StudyStage): boolean {
   return (
-    stage === 'BASELINE_TAM' ||
-    stage === 'LOW_TAM' ||
-    stage === 'MED_TAM' ||
-    stage === 'HIGH_TAM'
+    stage === 'LOW_TAM' || stage === 'MED_TAM' || stage === 'HIGH_TAM'
   )
 }
 
 /**
- * True for the four `*_SUS` stages. SUS submission is the point where a
- * condition's accumulated telemetry is POSTed and `tempTelemetry` is
- * cleared, so this predicate is what `advanceStage()` uses to decide when
- * to reset per-phase counters (e.g. `currentPhaseReturnCount`).
+ * True for the three algorithmic `*_SUS` stages. SUS submission is the
+ * point where an algorithmic condition's accumulated telemetry is POSTed
+ * and `tempTelemetry` is cleared. Combined with `BASELINE_TEST` (which
+ * POSTs lock-screen metrics itself and skips surveys), this predicate is
+ * what `advanceStage()` uses to decide when to reset per-phase counters
+ * (e.g. `currentPhaseReturnCount`).
  */
 export function isSusStage(stage: StudyStage): boolean {
   return (
-    stage === 'BASELINE_SUS' ||
-    stage === 'LOW_SUS' ||
-    stage === 'MED_SUS' ||
-    stage === 'HIGH_SUS'
+    stage === 'LOW_SUS' || stage === 'MED_SUS' || stage === 'HIGH_SUS'
   )
+}
+
+/**
+ * True for stages that close a condition's telemetry document and should
+ * reset per-phase counters when advancing past them.
+ */
+export function isConditionClosingStage(stage: StudyStage): boolean {
+  return stage === 'BASELINE_TEST' || isSusStage(stage)
 }

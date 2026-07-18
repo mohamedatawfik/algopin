@@ -13,11 +13,11 @@ export type Keystroke = {
 /**
  * The minimal lock-screen-side performance object captured at unlock-success
  * time. This is the base shape that gets stashed in
- * `studyStore.tempTelemetry` while the participant fills in the matching
- * `*_TAM` and `*_SUS` surveys for the same condition. Those two survey
- * views append their `tam` and `sus` subdocs to the same slot; the SUS
- * view then merges in `mTurkId` and `condition` before POSTing the full
- * payload to /api/telemetry.
+ * `studyStore.tempTelemetry`. For Baseline it is POSTed immediately from
+ * `LockScreenView`. For algorithmic conditions the matching `*_TAM` and
+ * `*_SUS` surveys append their `tam` and `sus` subdocs to the same slot;
+ * the SUS view then merges in `mTurkId` and `condition` before POSTing
+ * the full payload to /api/telemetry.
  */
 export type LockScreenMetrics = {
   renderTimestamp: number
@@ -29,8 +29,8 @@ export type LockScreenMetrics = {
    * button during the current complexity phase. Counted by the global
    * store (`currentPhaseReturnCount`) and snapshotted into the metrics
    * here at unlock-success time. Accumulates across SETUP ↔ TEST bounces
-   * within a single phase; the store resets it only after the matching
-   * `*_SUS` survey is submitted (see `advanceStage` in `studyStore.ts`).
+   * within a single phase; the store resets it after BASELINE_TEST or
+   * the matching `*_SUS` survey (see `advanceStage` in `studyStore.ts`).
    */
   returnCount: number
   submittedErrors: string[]

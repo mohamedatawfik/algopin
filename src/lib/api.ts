@@ -4,13 +4,54 @@ import type { AlgorithmComplexity } from './stageFlow'
 
 const DEFAULT_API_BASE = 'http://localhost:4000'
 
+/**
+ * Resolve the API origin used by `fetch`.
+ *
+ * Prefer `VITE_API_BASE_URL` when set (deploy.sh bakes the public HTTPS
+ * origin in). Otherwise use same-origin (`''`) when the page is not on
+ * localhost so a phone never tries to reach `http://localhost:4000`, and
+ * fall back to the local Express default for Vite/dev.
+ */
 export function getApiBaseUrl(): string {
   const fromEnv =
     typeof import.meta !== 'undefined'
       ? (import.meta as ImportMeta & { env?: Record<string, string> }).env
           ?.VITE_API_BASE_URL
       : undefined
-  return fromEnv || DEFAULT_API_BASE
+  if (fromEnv) return fromEnv
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
+  ) {
+    return ''
+  }
+  return DEFAULT_API_BASE
+}
+
+/**
+ * Map low-level fetch / Safari network errors ("Load failed", "Failed to
+ * fetch") onto a participant-facing message. Server validation messages
+ * are passed through unchanged.
+ */
+export function formatApiErrorMessage(err: unknown, fallback: string): string {
+  const raw =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : fallback
+  const normalized = raw.trim().toLowerCase()
+  if (
+    normalized === 'load failed' ||
+    normalized === 'failed to fetch' ||
+    normalized === 'networkerror when attempting to fetch resource.' ||
+    normalized === 'network error' ||
+    normalized.includes('networkrequestfailed')
+  ) {
+    return 'Could not reach the server. Check your connection and try again.'
+  }
+  return raw || fallback
 }
 
 export type PredefinedAlgorithm = {

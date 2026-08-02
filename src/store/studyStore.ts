@@ -6,6 +6,7 @@ import {
   emptyDemographics,
   fetchAlgorithms,
   finalizeParticipant as finalizeParticipantApi,
+  formatApiErrorMessage,
   initParticipant,
   postTelemetry,
   PredefinedAlgorithm,
@@ -352,10 +353,12 @@ export const useStudyStore = create<StudyState>((set, get) => ({
         lastParticipantInitError: null,
       })
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to register participant'
+      const message = formatApiErrorMessage(
+        err,
+        'Failed to register participant'
+      )
       set({ lastParticipantInitError: message })
-      throw err
+      throw new Error(message)
     }
   },
 
@@ -365,8 +368,7 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       set({ lastTelemetryPostError: null })
       return { ok: true, id: res.id }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to post telemetry'
+      const message = formatApiErrorMessage(err, 'Failed to post telemetry')
       set({ lastTelemetryPostError: message })
       return { ok: false, error: message }
     }
@@ -402,8 +404,10 @@ export const useStudyStore = create<StudyState>((set, get) => ({
         completionCode: res.completionCode,
       }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to finalize participant'
+      const message = formatApiErrorMessage(
+        err,
+        'Failed to finalize participant'
+      )
       set({ lastFinalizeError: message })
       return { ok: false, error: message }
     }

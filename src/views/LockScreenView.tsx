@@ -20,6 +20,7 @@ import {
   LockScreenMetrics,
   useLockScreenTelemetry,
 } from '../hooks/useLockScreenTelemetry'
+import type { TelemetrySubmission } from '../lib/api'
 import {
   calculateExpectedPin,
   getCanonicalType,
@@ -114,8 +115,13 @@ export function LockScreenView() {
   const [shakeKey, setShakeKey] = useState(0)
   const [showSuccess, setShowSuccess] = useState(false)
   const [telemetryError, setTelemetryError] = useState<string | null>(null)
+  const [savingTelemetry, setSavingTelemetry] = useState(false)
+  /** True once the PIN matched; keeps "Incorrect passcode" hidden if save fails. */
+  const [pinAccepted, setPinAccepted] = useState(false)
+  const [canRetryBaseline, setCanRetryBaseline] = useState(false)
 
   const successTimerRef = useRef<number | null>(null)
+  const pendingBaselineSubmissionRef = useRef<TelemetrySubmission | null>(null)
   const telemetry = useLockScreenTelemetry()
 
   const battery = useMemo(() => randomInRange(20, 90), [])
@@ -216,6 +222,7 @@ export function LockScreenView() {
         }
         setTempTelemetry(metrics)
         setTelemetryError(null)
+        setPinAccepted(true)
         setShowSuccess(true)
 
         if (currentStage === 'BASELINE_TEST') {
@@ -228,31 +235,39 @@ export function LockScreenView() {
               )
               return
             }
-            const baselineSubmission = {
+            const baselineSubmission: TelemetrySubmission = {
               mTurkId,
               condition: currentCondition,
               ...metrics,
               demographics,
             }
+            pendingBaselineSubmissionRef.current = baselineSubmission
+            setCanRetryBaseline(true)
+            setSavingTelemetry(true)
             const res = await submitTelemetry(baselineSubmission)
+            setSavingTelemetry(false)
             if (!res.ok) {
               appendTelemetry('telemetry_post_failed', {
                 stage: currentStage,
                 condition: currentCondition,
                 error: res.error,
               })
+              // Keep pinAccepted so the UI does not look like a wrong PIN.
               setShowSuccess(false)
               setTelemetryError(
                 res.error ?? 'Could not save your responses. Please try again.'
               )
               return
             }
+            pendingBaselineSubmissionRef.current = null
+            setCanRetryBaseline(false)
             appendTelemetry('telemetry_post_ok', {
               stage: currentStage,
               condition: currentCondition,
               id: res.id,
             })
             clearTempTelemetry()
+            setShowSuccess(true)
             successTimerRef.current = window.setTimeout(() => {
               advanceStage()
             }, SUCCESS_NAVIGATE_DELAY_MS)
@@ -302,8 +317,46 @@ export function LockScreenView() {
     ]
   )
 
+  const retryBaselineTelemetry = async () => {
+    const pending = pendingBaselineSubmissionRef.current
+    if (!pending || savingTelemetry) return
+    setTelemetryError(null)
+    setSavingTelemetry(true)
+    setShowSuccess(true)
+    const res = await submitTelemetry(pending)
+    setSavingTelemetry(false)
+    if (!res.ok) {
+      appendTelemetry('telemetry_post_failed', {
+        stage: currentStage,
+        condition: currentCondition,
+        error: res.error,
+        retry: true,
+      })
+      setShowSuccess(false)
+      setTelemetryError(
+        res.error ?? 'Could not save your responses. Please try again.'
+      )
+      return
+    }
+    pendingBaselineSubmissionRef.current = null
+    setCanRetryBaseline(false)
+    appendTelemetry('telemetry_post_ok', {
+      stage: currentStage,
+      condition: currentCondition,
+      id: res.id,
+      retry: true,
+    })
+    clearTempTelemetry()
+    setShowSuccess(true)
+    successTimerRef.current = window.setTimeout(() => {
+      advanceStage()
+    }, SUCCESS_NAVIGATE_DELAY_MS)
+  }
+
+  const inputLocked = showSuccess || pinAccepted || savingTelemetry
+
   const onDigit = (digit: string) => {
-    if (showSuccess) return
+    if (inputLocked) return
     if (entered.length >= expectedLength) return
     const next = entered + digit
     setEntered(next)
@@ -315,7 +368,7 @@ export function LockScreenView() {
   }
 
   const onClear = () => {
-    if (showSuccess) return
+    if (inputLocked) return
     if (entered.length === 0) return
     setEntered('')
     telemetry.recordKey('CLEAR', 'clear')
@@ -323,7 +376,7 @@ export function LockScreenView() {
   }
 
   const handleReturn = () => {
-    if (showSuccess) return
+    if (inputLocked) return
     // Fail-safe escape hatch: send the participant back to the matching
     // setup stage (e.g. LOW_TEST -> LOW_SETUP) so they can re-read the rule
     // they just learned without being forced to guess attempts. The lock
@@ -527,7 +580,7 @@ export function LockScreenView() {
           >
             <PinIndicators length={expectedLength} filled={entered.length} />
           </Box>
-          {errorCount > 0 && !showSuccess && (
+          {errorCount > 0 && !pinAccepted && !showSuccess && (
             <Typography
               sx={{
                 mt: 0.5,
@@ -536,7 +589,22 @@ export function LockScreenView() {
                 letterSpacing: 0.5,
               }}
             >
-              Incorrect passcode · {errorCount} {errorCount === 1 ? 'try' : 'tries'}
+              Incorrect passcode · {errorCount}{' '}
+              {errorCount === 1 ? 'try' : 'tries'}
+            </Typography>
+          )}
+          {pinAccepted && telemetryError && (
+            <Typography
+              sx={{
+                mt: 0.5,
+                fontSize: 11,
+                color: '#ffb74d',
+                letterSpacing: 0.5,
+                textAlign: 'center',
+                px: 2,
+              }}
+            >
+              Passcode accepted — saving failed. Tap Retry below.
             </Typography>
           )}
         </Stack>
@@ -559,7 +627,7 @@ export function LockScreenView() {
                   key="return"
                   label="Return"
                   onClick={handleReturn}
-                  disabled={showSuccess}
+                  disabled={inputLocked}
                 />
               )
             }
@@ -569,7 +637,7 @@ export function LockScreenView() {
                   key="clear"
                   label="Clear"
                   onClick={onClear}
-                  disabled={showSuccess || entered.length === 0}
+                  disabled={inputLocked || entered.length === 0}
                 />
               )
             }
@@ -578,7 +646,7 @@ export function LockScreenView() {
                 key={`d-${key.value}-${idx}`}
                 digit={key.value}
                 onClick={onDigit}
-                disabled={showSuccess}
+                disabled={inputLocked}
               />
             )
           })}
@@ -586,7 +654,7 @@ export function LockScreenView() {
       </Paper>
 
       <Snackbar
-        open={showSuccess}
+        open={showSuccess && !telemetryError}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         autoHideDuration={SUCCESS_NAVIGATE_DELAY_MS}
       >
@@ -597,7 +665,9 @@ export function LockScreenView() {
           sx={{ borderRadius: 3, fontWeight: 600 }}
         >
           {currentStage === 'BASELINE_TEST'
-            ? 'Unlocked — continuing'
+            ? savingTelemetry
+              ? 'Unlocked — saving…'
+              : 'Unlocked — continuing'
             : 'Unlocked — opening survey'}
         </Alert>
       </Snackbar>
@@ -611,6 +681,20 @@ export function LockScreenView() {
           severity="error"
           variant="filled"
           onClose={() => setTelemetryError(null)}
+          action={
+            canRetryBaseline ? (
+              <Button
+                color="inherit"
+                size="small"
+                disabled={savingTelemetry}
+                onClick={() => {
+                  void retryBaselineTelemetry()
+                }}
+              >
+                {savingTelemetry ? 'Retrying…' : 'Retry'}
+              </Button>
+            ) : undefined
+          }
           sx={{ borderRadius: 3 }}
         >
           {telemetryError}

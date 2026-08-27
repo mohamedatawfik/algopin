@@ -21,11 +21,12 @@ import { useStudyStore } from '../store/studyStore'
 /**
  * DEMOGRAPHICS phase, positioned between ONBOARDING and STATIC_SETUP.
  * Collects a birth date (Month select + Day select + Year textfield),
- * highest completed education, self-reported passcode-change frequency,
- * and a 4-item 1..6 Likert Technology-Affinity block. On submit the whole
- * bundle is flushed into the global `demographics` store and control is
- * handed to `advanceStage()`, which walks the participant into
- * `STATIC_SETUP` per `STAGE_ORDER`.
+ * gender, country of residence, highest completed education,
+ * self-reported passcode-change frequency, and a 4-item 1..6 Likert
+ * Technology-Affinity block. On submit the whole bundle is flushed into
+ * the global `demographics` store and control is handed to
+ * `advanceStage()`, which walks the participant into `STATIC_SETUP` per
+ * `STAGE_ORDER`.
  */
 
 const MONTHS = [
@@ -50,6 +51,14 @@ const EDUCATION_OPTIONS = [
   "Bachelor's",
   "Master's",
   'Doctorate',
+  'Other',
+]
+
+const GENDER_OPTIONS = [
+  'Male',
+  'Female',
+  'Non-binary',
+  'Prefer not to say',
   'Other',
 ]
 
@@ -128,6 +137,8 @@ export function DemographicsView() {
   const [birthDay, setBirthDay] = useState(initialDob.day || '')
   const [birthYear, setBirthYear] = useState(initialDob.year || '')
   const [education, setEducation] = useState(demographics.education || '')
+  const [gender, setGender] = useState(demographics.gender || '')
+  const [country, setCountry] = useState(demographics.country || '')
   const [passwordFrequency, setPasswordFrequency] = useState(
     demographics.passwordFrequency || ''
   )
@@ -168,6 +179,8 @@ export function DemographicsView() {
     birthDay !== '' &&
     yearValid &&
     education !== '' &&
+    gender !== '' &&
+    country.trim() !== '' &&
     passwordFrequency !== '' &&
     allTechAnswered
 
@@ -187,6 +200,8 @@ export function DemographicsView() {
     const payload = {
       birthDate,
       education,
+      gender,
+      country: country.trim(),
       passwordFrequency,
       techAffinity: numericAffinity,
     }
@@ -318,6 +333,33 @@ export function DemographicsView() {
           ))}
         </RadioGroup>
       </FormControl>
+
+      <FormControl fullWidth>
+        <InputLabel id="gender-label">Gender</InputLabel>
+        <Select
+          labelId="gender-label"
+          id="gender"
+          label="Gender"
+          value={gender}
+          onChange={(e) => setGender(e.target.value)}
+        >
+          {GENDER_OPTIONS.map((option) => (
+            <MenuItem key={option} value={option}>
+              {option}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      <TextField
+        id="country"
+        label="Country of Residence"
+        type="text"
+        value={country}
+        onChange={(e) => setCountry(e.target.value)}
+        fullWidth
+        inputProps={{ 'aria-label': 'Country of Residence' }}
+      />
 
       <Stack spacing={2}>
         <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>

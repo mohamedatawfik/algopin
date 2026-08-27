@@ -25,6 +25,8 @@ const demographicsSchema = new Schema(
   {
     birthDate: { type: String, default: '', trim: true },
     education: { type: String, default: '', trim: true },
+    gender: { type: String, default: '', trim: true },
+    country: { type: String, default: '', trim: true },
     passwordFrequency: { type: String, default: '', trim: true },
     techAffinity: {
       type: [Number],

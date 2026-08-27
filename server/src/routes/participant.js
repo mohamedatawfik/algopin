@@ -51,6 +51,8 @@ function normalizeDemographics(raw) {
     value: {
       birthDate: typeof raw.birthDate === 'string' ? raw.birthDate : '',
       education: typeof raw.education === 'string' ? raw.education : '',
+      gender: typeof raw.gender === 'string' ? raw.gender : '',
+      country: typeof raw.country === 'string' ? raw.country : '',
       passwordFrequency:
         typeof raw.passwordFrequency === 'string' ? raw.passwordFrequency : '',
       techAffinity,

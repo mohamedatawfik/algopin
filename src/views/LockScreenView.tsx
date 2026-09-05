@@ -18,6 +18,7 @@ import { keyframes } from '@mui/system'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   LockScreenMetrics,
+  LockScreenSubmission,
   useLockScreenTelemetry,
 } from '../hooks/useLockScreenTelemetry'
 import type { TelemetrySubmission } from '../lib/api'
@@ -35,6 +36,21 @@ import {
 const PHONE_MAX_WIDTH = 400
 const PHONE_MAX_HEIGHT = 850
 const SUCCESS_NAVIGATE_DELAY_MS = 900
+const SKIP_AFTER_FAILURES = 5
+
+function metricsFromSubmission(submission: LockScreenSubmission): LockScreenMetrics {
+  return {
+    renderTimestamp: submission.renderTimestamp,
+    timeToFirstTouch: submission.timeToFirstTouch,
+    totalAuthTime: submission.totalAuthTime,
+    errorCount: submission.errorCount,
+    returnCount: submission.returnCount,
+    submittedErrors: submission.submittedErrors,
+    keystrokeLog: submission.keystrokeLog,
+    skipped: submission.skipped,
+    success: submission.success,
+  }
+}
 
 type KeySpec =
   | { kind: 'digit'; value: string }
@@ -111,13 +127,15 @@ export function LockScreenView() {
   const basePin = storedBasePin ?? ''
   const [now, setNow] = useState(() => new Date())
   const [entered, setEntered] = useState<string>('')
-  const [errorCount, setErrorCount] = useState(0)
+  const [failedAttempts, setFailedAttempts] = useState(0)
   const [shakeKey, setShakeKey] = useState(0)
   const [showSuccess, setShowSuccess] = useState(false)
   const [telemetryError, setTelemetryError] = useState<string | null>(null)
   const [savingTelemetry, setSavingTelemetry] = useState(false)
   /** True once the PIN matched; keeps "Incorrect passcode" hidden if save fails. */
   const [pinAccepted, setPinAccepted] = useState(false)
+  /** True once the participant used the 5-failure skip failsafe. */
+  const [skipping, setSkipping] = useState(false)
   const [canRetryBaseline, setCanRetryBaseline] = useState(false)
 
   const successTimerRef = useRef<number | null>(null)
@@ -174,6 +192,90 @@ export function LockScreenView() {
     }
   }, [])
 
+  /**
+   * Shared post-attempt routing used by both a matching PIN and the
+   * skip failsafe. Algorithmic `*_TEST` stages advance into the matching
+   * questionnaire (`LOW_TEST` → `LOW_TAM`, etc. via STAGE_ORDER).
+   * Baseline POSTs lock-screen metrics immediately, then goes to
+   * ALGO_INTRO. Round-2 tests, if added later, follow the same
+   * `advanceStage()` successor as a successful unlock.
+   */
+  const routeAfterAttempt = useCallback(
+    (
+      metrics: LockScreenMetrics,
+      { announceUnlock }: { announceUnlock: boolean }
+    ) => {
+      if (currentStage === 'BASELINE_TEST') {
+        // Baseline skips surveys: POST metrics now, then go to ALGO_INTRO.
+        void (async () => {
+          if (!mTurkId) {
+            if (announceUnlock) setShowSuccess(false)
+            setTelemetryError(
+              'Your MTurk Worker ID is missing; please reload the study from the original link.'
+            )
+            return
+          }
+          const baselineSubmission: TelemetrySubmission = {
+            mTurkId,
+            condition: currentCondition,
+            ...metrics,
+            demographics,
+          }
+          pendingBaselineSubmissionRef.current = baselineSubmission
+          setCanRetryBaseline(true)
+          setSavingTelemetry(true)
+          const res = await submitTelemetry(baselineSubmission)
+          setSavingTelemetry(false)
+          if (!res.ok) {
+            appendTelemetry('telemetry_post_failed', {
+              stage: currentStage,
+              condition: currentCondition,
+              error: res.error,
+            })
+            if (announceUnlock) setShowSuccess(false)
+            setTelemetryError(
+              res.error ?? 'Could not save your responses. Please try again.'
+            )
+            return
+          }
+          pendingBaselineSubmissionRef.current = null
+          setCanRetryBaseline(false)
+          appendTelemetry('telemetry_post_ok', {
+            stage: currentStage,
+            condition: currentCondition,
+            id: res.id,
+          })
+          clearTempTelemetry()
+          if (announceUnlock) setShowSuccess(true)
+          successTimerRef.current = window.setTimeout(() => {
+            window.scrollTo(0, 0)
+            advanceStage()
+          }, SUCCESS_NAVIGATE_DELAY_MS)
+        })()
+      } else {
+        successTimerRef.current = window.setTimeout(() => {
+          // STAGE_ORDER pairs every algorithmic *_TEST with its *_TAM
+          // successor (e.g. LOW_TEST -> LOW_TAM). The TAM view then
+          // advances to *_SUS, which POSTs telemetry. A skip of a
+          // round-2 test would likewise follow whatever successor
+          // STAGE_ORDER defines (e.g. LOW_TEST_2 -> MED_TEST_2).
+          window.scrollTo(0, 0)
+          advanceStage()
+        }, SUCCESS_NAVIGATE_DELAY_MS)
+      }
+    },
+    [
+      advanceStage,
+      appendTelemetry,
+      clearTempTelemetry,
+      currentCondition,
+      currentStage,
+      demographics,
+      mTurkId,
+      submitTelemetry,
+    ]
+  )
+
   const validate = useCallback(
     (attempt: string) => {
       const target = calculateExpectedPin(
@@ -206,83 +308,22 @@ export function LockScreenView() {
           returnCount: submission.returnCount,
           totalAuthTime: submission.totalAuthTime,
           timeToFirstTouch: submission.timeToFirstTouch,
+          skipped: submission.skipped,
+          success: submission.success,
         })
         // Compile lock-screen performance metrics. Baseline POSTs these
         // immediately (no TAM/SUS). Algorithmic conditions stash them in
         // tempTelemetry; TamSurveyView appends `tam`, and SusSurveyView
         // appends `sus` + identity before POSTing.
-        const metrics: LockScreenMetrics = {
-          renderTimestamp: submission.renderTimestamp,
-          timeToFirstTouch: submission.timeToFirstTouch,
-          totalAuthTime: submission.totalAuthTime,
-          errorCount: submission.errorCount,
-          returnCount: submission.returnCount,
-          submittedErrors: submission.submittedErrors,
-          keystrokeLog: submission.keystrokeLog,
-        }
+        const metrics = metricsFromSubmission(submission)
         setTempTelemetry(metrics)
         setTelemetryError(null)
         setPinAccepted(true)
         setShowSuccess(true)
-
-        if (currentStage === 'BASELINE_TEST') {
-          // Baseline skips surveys: POST metrics now, then go to ALGO_INTRO.
-          void (async () => {
-            if (!mTurkId) {
-              setShowSuccess(false)
-              setTelemetryError(
-                'Your MTurk Worker ID is missing; please reload the study from the original link.'
-              )
-              return
-            }
-            const baselineSubmission: TelemetrySubmission = {
-              mTurkId,
-              condition: currentCondition,
-              ...metrics,
-              demographics,
-            }
-            pendingBaselineSubmissionRef.current = baselineSubmission
-            setCanRetryBaseline(true)
-            setSavingTelemetry(true)
-            const res = await submitTelemetry(baselineSubmission)
-            setSavingTelemetry(false)
-            if (!res.ok) {
-              appendTelemetry('telemetry_post_failed', {
-                stage: currentStage,
-                condition: currentCondition,
-                error: res.error,
-              })
-              // Keep pinAccepted so the UI does not look like a wrong PIN.
-              setShowSuccess(false)
-              setTelemetryError(
-                res.error ?? 'Could not save your responses. Please try again.'
-              )
-              return
-            }
-            pendingBaselineSubmissionRef.current = null
-            setCanRetryBaseline(false)
-            appendTelemetry('telemetry_post_ok', {
-              stage: currentStage,
-              condition: currentCondition,
-              id: res.id,
-            })
-            clearTempTelemetry()
-            setShowSuccess(true)
-            successTimerRef.current = window.setTimeout(() => {
-              advanceStage()
-            }, SUCCESS_NAVIGATE_DELAY_MS)
-          })()
-        } else {
-          successTimerRef.current = window.setTimeout(() => {
-            // STAGE_ORDER pairs every algorithmic *_TEST with its *_TAM
-            // successor (e.g. LOW_TEST -> LOW_TAM). The TAM view then
-            // advances to *_SUS, which POSTs telemetry.
-            advanceStage()
-          }, SUCCESS_NAVIGATE_DELAY_MS)
-        }
+        routeAfterAttempt(metrics, { announceUnlock: true })
       } else {
-        const nextErrors = errorCount + 1
-        setErrorCount(nextErrors)
+        const nextErrors = failedAttempts + 1
+        setFailedAttempts(nextErrors)
         telemetry.recordError(attempt)
         appendTelemetry('pin_failure', {
           errorCount: nextErrors,
@@ -299,20 +340,17 @@ export function LockScreenView() {
       }
     },
     [
-      advanceStage,
       appendTelemetry,
       basePin,
       battery,
-      clearTempTelemetry,
       currentCondition,
       currentPhaseReturnCount,
       currentStage,
-      demographics,
-      errorCount,
+      failedAttempts,
       mTurkId,
       resolvedConfig,
+      routeAfterAttempt,
       setTempTelemetry,
-      submitTelemetry,
       telemetry,
     ]
   )
@@ -322,7 +360,7 @@ export function LockScreenView() {
     if (!pending || savingTelemetry) return
     setTelemetryError(null)
     setSavingTelemetry(true)
-    setShowSuccess(true)
+    if (pinAccepted) setShowSuccess(true)
     const res = await submitTelemetry(pending)
     setSavingTelemetry(false)
     if (!res.ok) {
@@ -347,13 +385,64 @@ export function LockScreenView() {
       retry: true,
     })
     clearTempTelemetry()
-    setShowSuccess(true)
+    if (pinAccepted) setShowSuccess(true)
     successTimerRef.current = window.setTimeout(() => {
+      window.scrollTo(0, 0)
       advanceStage()
     }, SUCCESS_NAVIGATE_DELAY_MS)
   }
 
-  const inputLocked = showSuccess || pinAccepted || savingTelemetry
+  const handleSkip = useCallback(() => {
+    if (showSuccess || pinAccepted || savingTelemetry || skipping) return
+    if (failedAttempts < SKIP_AFTER_FAILURES) return
+
+    const target = calculateExpectedPin(
+      basePin,
+      currentStage,
+      resolvedConfig,
+      { date: new Date(), batteryLevel: battery }
+    )
+    const phaseReturnCount = currentPhaseReturnCount
+    const submission = telemetry.recordSkip({
+      mTurkId,
+      currentCondition,
+      currentStage,
+      expectedPin: target,
+      returnCount: phaseReturnCount,
+    })
+    appendTelemetry('pin_skipped', {
+      errorCount: submission.errorCount,
+      returnCount: submission.returnCount,
+      totalAuthTime: submission.totalAuthTime,
+      skipped: true,
+      success: false,
+    })
+    const metrics = metricsFromSubmission(submission)
+    setTempTelemetry(metrics)
+    setTelemetryError(null)
+    setSkipping(true)
+    window.scrollTo(0, 0)
+    routeAfterAttempt(metrics, { announceUnlock: false })
+  }, [
+    appendTelemetry,
+    basePin,
+    battery,
+    currentCondition,
+    currentPhaseReturnCount,
+    currentStage,
+    failedAttempts,
+    mTurkId,
+    pinAccepted,
+    resolvedConfig,
+    routeAfterAttempt,
+    savingTelemetry,
+    setTempTelemetry,
+    showSuccess,
+    skipping,
+    telemetry,
+  ])
+
+  const inputLocked = showSuccess || pinAccepted || savingTelemetry || skipping
 
   const onDigit = (digit: string) => {
     if (inputLocked) return
@@ -395,7 +484,7 @@ export function LockScreenView() {
       to: target,
       condition: currentCondition,
       enteredLength: entered.length,
-      errorCount,
+      errorCount: failedAttempts,
       currentPhaseReturnCount: nextReturnCount,
     })
     setEntered('')
@@ -580,7 +669,7 @@ export function LockScreenView() {
           >
             <PinIndicators length={expectedLength} filled={entered.length} />
           </Box>
-          {errorCount > 0 && !pinAccepted && !showSuccess && (
+          {failedAttempts > 0 && !pinAccepted && !showSuccess && !skipping && (
             <Typography
               sx={{
                 mt: 0.5,
@@ -589,8 +678,8 @@ export function LockScreenView() {
                 letterSpacing: 0.5,
               }}
             >
-              Incorrect passcode · {errorCount}{' '}
-              {errorCount === 1 ? 'try' : 'tries'}
+              Incorrect passcode · {failedAttempts}{' '}
+              {failedAttempts === 1 ? 'try' : 'tries'}
             </Typography>
           )}
           {pinAccepted && telemetryError && (
@@ -651,6 +740,33 @@ export function LockScreenView() {
             )
           })}
         </Box>
+        {failedAttempts >= SKIP_AFTER_FAILURES &&
+          !pinAccepted &&
+          !showSuccess &&
+          !skipping && (
+            <Stack
+              alignItems="center"
+              spacing={0.5}
+              sx={{ px: 3, pb: { xs: 2, sm: 2.5 } }}
+            >
+              <Typography
+                variant="caption"
+                color="error"
+                sx={{ textAlign: 'center' }}
+              >
+                You have entered an incorrect PIN 5 times. You may skip to
+                the questionnaires if you are unable to calculate the PIN.
+              </Typography>
+              <Button
+                variant="text"
+                color="error"
+                onClick={handleSkip}
+                disabled={inputLocked}
+              >
+                I am stuck - Skip to Next Step
+              </Button>
+            </Stack>
+          )}
       </Paper>
 
       <Snackbar

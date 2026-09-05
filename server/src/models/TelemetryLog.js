@@ -167,6 +167,15 @@ const telemetryLogSchema = new Schema(
     submittedErrors: { type: [String], default: [] },
     keystrokeLog: { type: [keystrokeSchema], default: [] },
     /**
+     * Lock-screen outcome flags. `skipped` is set when the participant
+     * used the 5-failure failsafe instead of unlocking. `success` is
+     * true only on a matching PIN; skip always persists success: false.
+     * Both apply to every lock-screen telemetry document (Baseline /
+     * Low / Medium / High, including any future round-2 tests).
+     */
+    skipped: { type: Boolean, default: false },
+    success: { type: Boolean, default: true },
+    /**
      * Per-phase survey subdocs. Required for Low / Medium / High (POSTed
      * after *_SUS). Optional for Baseline, which records lock-screen
      * metrics only and skips TAM/SUS.

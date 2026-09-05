@@ -35,6 +35,16 @@ export type LockScreenMetrics = {
   returnCount: number
   submittedErrors: string[]
   keystrokeLog: Keystroke[]
+  /**
+   * True when the participant used the 5-failure skip failsafe instead
+   * of entering the correct PIN. Default false on a matching unlock.
+   */
+  skipped: boolean
+  /**
+   * True only when the entered PIN matched. Skip persists this as false
+   * so a failed-and-skipped attempt is never counted as an unlock.
+   */
+  success: boolean
 }
 
 /**
@@ -68,11 +78,16 @@ export type LockScreenSuccessMeta = {
   returnCount: number
 }
 
+export type LockScreenOutcome = {
+  skipped?: boolean
+}
+
 export type UseLockScreenTelemetryApi = {
   renderTimestamp: number
   recordKey: (key: string, kind: KeyEventKind) => void
   recordError: (submitted: string) => void
   recordSuccess: (meta: LockScreenSuccessMeta) => LockScreenSubmission
+  recordSkip: (meta: LockScreenSuccessMeta) => LockScreenSubmission
   reset: () => void
 }
 
@@ -99,8 +114,12 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
     submittedErrorsRef.current.push(submitted)
   }, [])
 
-  const recordSuccess = useCallback(
-    (meta: LockScreenSuccessMeta): LockScreenSubmission => {
+  const recordOutcome = useCallback(
+    (
+      meta: LockScreenSuccessMeta,
+      outcome: LockScreenOutcome = {}
+    ): LockScreenSubmission => {
+      const skipped = Boolean(outcome.skipped)
       const completedAt = Date.now()
       const firstTouch = firstTouchTimestampRef.current
       const submission: LockScreenSubmission = {
@@ -119,12 +138,26 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
         errorCount: errorCountRef.current,
         returnCount: meta.returnCount,
         submittedErrors: [...submittedErrorsRef.current],
+        skipped,
+        success: !skipped,
         completedAt,
       }
       persistLockScreenSubmission(submission)
       return submission
     },
     [renderTimestamp]
+  )
+
+  const recordSuccess = useCallback(
+    (meta: LockScreenSuccessMeta): LockScreenSubmission =>
+      recordOutcome(meta, { skipped: false }),
+    [recordOutcome]
+  )
+
+  const recordSkip = useCallback(
+    (meta: LockScreenSuccessMeta): LockScreenSubmission =>
+      recordOutcome(meta, { skipped: true }),
+    [recordOutcome]
   )
 
   const reset = useCallback(() => {
@@ -140,6 +173,7 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
     recordKey,
     recordError,
     recordSuccess,
+    recordSkip,
     reset,
   }
 }

@@ -202,6 +202,8 @@ router.post('/', async (req, res, next) => {
         ? body.submittedErrors
         : [],
       keystrokeLog: Array.isArray(body.keystrokeLog) ? body.keystrokeLog : [],
+      skipped: Boolean(body.skipped),
+      success: Boolean(body.skipped) ? false : body.success !== false,
       ...(tamValue ? { tam: tamValue } : {}),
       ...(susValue ? { sus: susValue } : {}),
       ...(demographics ? { demographics } : {}),

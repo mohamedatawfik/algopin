@@ -16,7 +16,7 @@ export type Keystroke = {
  * `studyStore.tempTelemetry`. For Baseline it is POSTed immediately from
  * `LockScreenView`. For algorithmic conditions the matching `*_TAM` and
  * `*_SUS` surveys append their `tam` and `sus` subdocs to the same slot;
- * the SUS view then merges in `mTurkId` and `condition` before POSTing
+ * the SUS view then merges in `prolificId` and `condition` before POSTing
  * the full payload to /api/telemetry.
  */
 export type LockScreenMetrics = {
@@ -54,7 +54,7 @@ export type LockScreenMetrics = {
  */
 export type LockScreenSubmission = LockScreenMetrics & {
   schemaVersion: 1
-  mTurkId: string
+  prolificId: string
   currentCondition: PinCondition
   currentStage: StudyStage
   expectedPin: string
@@ -66,7 +66,7 @@ export type LockScreenSubmission = LockScreenMetrics & {
 export const LOCK_SCREEN_TELEMETRY_STORAGE_KEY = 'lockscreen_telemetry_v1'
 
 export type LockScreenSuccessMeta = {
-  mTurkId: string
+  prolificId: string
   currentCondition: PinCondition
   currentStage: StudyStage
   expectedPin: string
@@ -124,7 +124,7 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
       const firstTouch = firstTouchTimestampRef.current
       const submission: LockScreenSubmission = {
         schemaVersion: 1,
-        mTurkId: meta.mTurkId,
+        prolificId: meta.prolificId,
         currentCondition: meta.currentCondition,
         currentStage: meta.currentStage,
         expectedPin: meta.expectedPin,

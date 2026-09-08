@@ -82,7 +82,7 @@ function buildInitialRatings() {
 }
 
 export function NasaTlxView() {
-  const mTurkId = useStudyStore((s) => s.mTurkId)
+  const prolificId = useStudyStore((s) => s.prolificId)
   const tempTelemetry = useStudyStore((s) => s.tempTelemetry)
   const clearTempTelemetry = useStudyStore((s) => s.clearTempTelemetry)
   const submitTelemetry = useStudyStore((s) => s.submitTelemetry)
@@ -129,11 +129,11 @@ export function NasaTlxView() {
     })
 
     // Build the exact wire payload the backend expects:
-    // { mTurkId, condition, ...metrics, nasaTlx }. Identity comes from the
+    // { prolificId, condition, ...metrics, nasaTlx }. Identity comes from the
     // store, the six metrics come from the lock screen via tempTelemetry,
     // and the ratings come from the slider state.
     const merged = {
-      mTurkId,
+      prolificId,
       condition: currentCondition,
       ...tempTelemetry,
       nasaTlx,

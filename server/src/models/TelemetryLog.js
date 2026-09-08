@@ -140,11 +140,21 @@ const attentionCheckSchema = new Schema(
 
 const telemetryLogSchema = new Schema(
   {
-    mTurkId: {
+    prolificId: {
       type: String,
       required: true,
       trim: true,
       index: true,
+    },
+    /**
+     * Optional Prolific completion code. Normally written on the
+     * Participant record at finalize time; accepted here when a
+     * telemetry POST also carries the code.
+     */
+    prolificCode: {
+      type: String,
+      required: false,
+      trim: true,
     },
     condition: {
       type: String,

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 
+import { COMPLETION_CODE_REGEX } from '../models/Participant.js'
 import TelemetryLog, {
   CONDITIONS,
   SUS_FIELDS,
@@ -107,8 +108,8 @@ router.post('/', async (req, res, next) => {
     // Accept either to keep the wire format flexible.
     const condition = body.condition ?? body.currentCondition
 
-    if (typeof body.mTurkId !== 'string' || body.mTurkId.trim().length === 0) {
-      return res.status(400).json({ error: 'mTurkId is required' })
+    if (typeof body.prolificId !== 'string' || body.prolificId.trim().length === 0) {
+      return res.status(400).json({ error: 'prolificId is required' })
     }
     if (!CONDITIONS.includes(condition)) {
       return res.status(400).json({
@@ -183,8 +184,23 @@ router.post('/', async (req, res, next) => {
     const demographics = normalizeDemographicsBlock(body.demographics)
     const attentionCheck = normalizeAttentionCheckBlock(body.attentionCheck)
 
+    let prolificCode
+    if (body.prolificCode != null && body.prolificCode !== '') {
+      if (
+        typeof body.prolificCode !== 'string' ||
+        !COMPLETION_CODE_REGEX.test(body.prolificCode)
+      ) {
+        return res.status(400).json({
+          error:
+            'prolificCode must match ALGO-PRO-XXXXXX (6 uppercase alphanumeric chars)',
+        })
+      }
+      prolificCode = body.prolificCode
+    }
+
     const doc = await TelemetryLog.create({
-      mTurkId: body.mTurkId.trim(),
+      prolificId: body.prolificId.trim(),
+      ...(prolificCode ? { prolificCode } : {}),
       condition,
       currentPhase: body.currentPhase,
       expectedPin: body.expectedPin,

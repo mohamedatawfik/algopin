@@ -1,4 +1,4 @@
-# Running the AlgoPIN MTurk study locally
+# Running the AlgoPIN Prolific study locally
 
 This document describes how to bring up the three pieces of the stack — **MongoDB**,
 the **API server**, and the **React frontend** — so that a participant walking
@@ -32,7 +32,7 @@ The wire format is:
 
 | Event in the study                | HTTP call                          | Mongo collection         |
 | --------------------------------- | ---------------------------------- | ------------------------ |
-| Onboarding (mTurkId + base PIN)   | `POST /api/participant/init`       | `participants`           |
+| Onboarding (prolificId + base PIN) | `POST /api/participant/init`       | `participants`           |
 | Unlock success on a `*_TEST` page | *(no network — held in store)*     | *(none yet)*             |
 | **Submit Ratings** on `*_TLX`     | `POST /api/telemetry`              | `telemetrylogs`          |
 | Submit on final SUS survey        | `POST /api/participant/finalize`   | `participants` (updated) |
@@ -194,7 +194,7 @@ Open `http://localhost:5173/` in a browser.
 
 Do a full smoke test of one condition to prove all four links are wired:
 
-1. On the onboarding screen, enter an `mTurkId` (e.g. `smoke_test_001`) and a
+1. On the onboarding screen, enter a `prolificId` (e.g. `smoke_test_001`) and a
    4‑digit base PIN. Submit.
 2. Walk through the static setup → baseline lock screen → enter the correct
    PIN. You'll briefly see the success animation.
@@ -210,13 +210,13 @@ docker exec mongo mongosh --quiet --eval \
   'db = db.getSiblingDB("mturk_pin_study");
    print("participants:",  db.participants.countDocuments());
    print("telemetrylogs:", db.telemetrylogs.countDocuments());
-   db.telemetrylogs.find({ mTurkId: "smoke_test_001" })
+   db.telemetrylogs.find({ prolificId: "smoke_test_001" })
      .sort({ createdAt: -1 })
      .limit(1)
      .pretty();'
 ```
 
-The last document should include `mTurkId`, `condition: "Baseline"`,
+The last document should include `prolificId`, `condition: "Baseline"`,
 `errorCount`, `returnCount`, `totalAuthTime`, and a full `nasaTlx` block with
 six numeric ratings. If it does, your pipeline is healthy.
 
@@ -236,7 +236,7 @@ Inside the shell:
 use mturk_pin_study
 show collections
 db.participants.find().sort({ createdAt: -1 }).limit(5).pretty()
-db.telemetrylogs.find({ mTurkId: "YOUR_ID" }).sort({ createdAt: -1 }).pretty()
+db.telemetrylogs.find({ prolificId: "YOUR_ID" }).sort({ createdAt: -1 }).pretty()
 ```
 
 > **Watch out:** `db.telemetry_logs` (with an underscore) does **not** exist.
@@ -250,14 +250,14 @@ db.telemetrylogs.find({ mTurkId: "YOUR_ID" }).sort({ createdAt: -1 }).pretty()
 docker exec mongo mongosh --quiet --eval \
   'db = db.getSiblingDB("mturk_pin_study");
    db.telemetrylogs.find({}, {
-     mTurkId: 1, condition: 1, errorCount: 1, returnCount: 1,
+     prolificId: 1, condition: 1, errorCount: 1, returnCount: 1,
      totalAuthTime: 1, "nasaTlx.effort": 1, createdAt: 1
    }).sort({ createdAt: -1 }).limit(10).pretty()'
 
 # All telemetry for one worker
 docker exec mongo mongosh --quiet --eval \
   'db = db.getSiblingDB("mturk_pin_study");
-   db.telemetrylogs.find({ mTurkId: "YOUR_ID" })
+   db.telemetrylogs.find({ prolificId: "YOUR_ID" })
      .sort({ createdAt: 1 }).pretty()'
 
 # Average totalAuthTime per condition

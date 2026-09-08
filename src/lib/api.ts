@@ -73,7 +73,7 @@ export type ParticipantInitResponse = {
   created: boolean
   participant: {
     _id: string
-    mTurkId: string
+    prolificId: string
     basePin: string
     createdAt?: string
   }
@@ -129,13 +129,19 @@ export type SusAnswersPerCondition = {
  * The exact JSON body POSTed to /api/telemetry once a condition is fully
  * complete. For algorithmic conditions that is lock screen + TAM + SUS.
  * For Baseline it is lock-screen metrics only (no surveys). Identity
- * (`mTurkId`, `condition`) comes from the store; lock-screen metrics were
+ * (`prolificId`, `condition`) comes from the store; lock-screen metrics were
  * written to `tempTelemetry` at unlock success. Algorithmic conditions
  * append `tam` via `TamSurveyView` and `sus` via `SusSurveyView` before
  * the POST; Baseline POSTs directly from `LockScreenView`.
  */
 export type TelemetrySubmission = {
-  mTurkId: string
+  prolificId: string
+  /**
+   * Optional Prolific completion code. Normally generated at the end of
+   * Phase 1 and persisted via `/api/participant/finalize`; included here
+   * when a telemetry POST also carries the code.
+   */
+  prolificCode?: string
   condition: PinCondition
   renderTimestamp: number
   timeToFirstTouch: number | null
@@ -234,14 +240,14 @@ export const SUS_MAX_VALUE = 5
 export type SusAnswers = number[]
 
 export type FinalizeSubmission = {
-  mTurkId: string
+  prolificId: string
   /**
-   * MTurk completion code shown to the participant on the terminal
-   * `CompletionView` (format: `ALGOPIN-MTA-XXXXXX`). Required — the
+   * Prolific completion code shown to the participant on the terminal
+   * `CompletionView` (format: `ALGO-PRO-XXXXXX`). Required — the
    * backend rejects the submission without it so we can cross-reference
-   * the paste on the HIT page against the study database.
+   * the paste on the Prolific submission page against the study database.
    */
-  completionCode: string
+  prolificCode: string
   /**
    * Legacy Day-1 SUS payload. The current study collects SUS
    * per-condition via `/api/telemetry`, so this is optional and normally
@@ -266,12 +272,12 @@ export type FinalizeResponse = {
   ok: boolean
   phase: StudyPhase
   completedAt: string
-  completionCode: string
+  prolificCode: string
   participant: {
     _id: string
-    mTurkId: string
+    prolificId: string
     basePin: string
-    completionCode?: string
+    prolificCode?: string
     demographics?: Demographics
     attentionCheck?: AttentionCheck
     finalize?: {
@@ -334,12 +340,12 @@ export async function fetchAlgorithms(
 }
 
 export async function initParticipant(
-  mTurkId: string,
+  prolificId: string,
   basePin: string
 ): Promise<ParticipantInitResponse> {
   return request<ParticipantInitResponse>('/api/participant/init', {
     method: 'POST',
-    body: JSON.stringify({ mTurkId, basePin }),
+    body: JSON.stringify({ prolificId, basePin }),
   })
 }
 

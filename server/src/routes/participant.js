@@ -92,10 +92,10 @@ function validateSusAnswers(raw) {
 
 router.post('/init', async (req, res, next) => {
   try {
-    const { mTurkId, basePin } = req.body || {}
+    const { prolificId, basePin } = req.body || {}
 
-    if (typeof mTurkId !== 'string' || mTurkId.trim().length === 0) {
-      return res.status(400).json({ error: 'mTurkId is required' })
+    if (typeof prolificId !== 'string' || prolificId.trim().length === 0) {
+      return res.status(400).json({ error: 'prolificId is required' })
     }
     if (typeof basePin !== 'string' || !PIN_REGEX.test(basePin)) {
       return res
@@ -103,8 +103,8 @@ router.post('/init', async (req, res, next) => {
         .json({ error: 'basePin must be a string of 4-8 digits' })
     }
 
-    const trimmedId = mTurkId.trim()
-    const existing = await Participant.findOne({ mTurkId: trimmedId }).lean()
+    const trimmedId = prolificId.trim()
+    const existing = await Participant.findOne({ prolificId: trimmedId }).lean()
 
     if (existing) {
       return res.status(200).json({
@@ -114,7 +114,7 @@ router.post('/init', async (req, res, next) => {
     }
 
     const created = await Participant.create({
-      mTurkId: trimmedId,
+      prolificId: trimmedId,
       basePin,
     })
 
@@ -125,7 +125,7 @@ router.post('/init', async (req, res, next) => {
   } catch (err) {
     if (err && err.code === 11000) {
       const existing = await Participant.findOne({
-        mTurkId: req.body?.mTurkId?.trim?.(),
+        prolificId: req.body?.prolificId?.trim?.(),
       }).lean()
       return res.status(200).json({ created: false, participant: existing })
     }
@@ -137,8 +137,8 @@ router.post('/finalize', async (req, res, next) => {
   try {
     const body = req.body || {}
 
-    if (typeof body.mTurkId !== 'string' || body.mTurkId.trim().length === 0) {
-      return res.status(400).json({ error: 'mTurkId is required' })
+    if (typeof body.prolificId !== 'string' || body.prolificId.trim().length === 0) {
+      return res.status(400).json({ error: 'prolificId is required' })
     }
 
     const phase =
@@ -161,17 +161,18 @@ router.post('/finalize', async (req, res, next) => {
       susValue = sus.value
     }
 
-    // The MTurk completion code is required from `CompletionView` — this
-    // is the token we cross-reference against the paste on the HIT page.
-    if (typeof body.completionCode !== 'string') {
+    // The Prolific completion code is required from `CompletionView` — this
+    // is the token we cross-reference against the paste on the Prolific
+    // submission page.
+    if (typeof body.prolificCode !== 'string') {
       return res
         .status(400)
-        .json({ error: 'completionCode is required' })
+        .json({ error: 'prolificCode is required' })
     }
-    if (!COMPLETION_CODE_REGEX.test(body.completionCode)) {
+    if (!COMPLETION_CODE_REGEX.test(body.prolificCode)) {
       return res.status(400).json({
         error:
-          'completionCode must match ALGOPIN-MTA-XXXXXX (6 uppercase alphanumeric chars)',
+          'prolificCode must match ALGO-PRO-XXXXXX (6 uppercase alphanumeric chars)',
       })
     }
 
@@ -184,7 +185,7 @@ router.post('/finalize', async (req, res, next) => {
       return res.status(400).json({ error: attentionCheck.error })
     }
 
-    const trimmedId = body.mTurkId.trim()
+    const trimmedId = body.prolificId.trim()
     const completedAt = new Date()
 
     const finalizePayload = { completedAt }
@@ -193,7 +194,7 @@ router.post('/finalize', async (req, res, next) => {
     }
 
     const setUpdate = {
-      completionCode: body.completionCode,
+      prolificCode: body.prolificCode,
       [`finalize.${phase}`]: finalizePayload,
     }
     if (demographics.value !== undefined) {
@@ -204,7 +205,7 @@ router.post('/finalize', async (req, res, next) => {
     }
 
     const participant = await Participant.findOneAndUpdate(
-      { mTurkId: trimmedId },
+      { prolificId: trimmedId },
       { $set: setUpdate },
       { new: true, runValidators: true }
     )
@@ -212,14 +213,14 @@ router.post('/finalize', async (req, res, next) => {
     if (!participant) {
       return res
         .status(404)
-        .json({ error: `participant not found for mTurkId: ${trimmedId}` })
+        .json({ error: `participant not found for prolificId: ${trimmedId}` })
     }
 
     return res.status(200).json({
       ok: true,
       phase,
       completedAt: completedAt.toISOString(),
-      completionCode: body.completionCode,
+      prolificCode: body.prolificCode,
       participant: participant.toObject(),
     })
   } catch (err) {

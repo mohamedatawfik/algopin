@@ -112,7 +112,7 @@ export function LockScreenView() {
     basePin: storedBasePin,
     currentCondition,
     currentStage,
-    mTurkId,
+    prolificId,
     configurations,
     appendTelemetry,
     advanceStage,
@@ -208,15 +208,15 @@ export function LockScreenView() {
       if (currentStage === 'BASELINE_TEST') {
         // Baseline skips surveys: POST metrics now, then go to ALGO_INTRO.
         void (async () => {
-          if (!mTurkId) {
+          if (!prolificId) {
             if (announceUnlock) setShowSuccess(false)
             setTelemetryError(
-              'Your MTurk Worker ID is missing; please reload the study from the original link.'
+              'Your Prolific ID is missing; please reload the study from the original link.'
             )
             return
           }
           const baselineSubmission: TelemetrySubmission = {
-            mTurkId,
+            prolificId,
             condition: currentCondition,
             ...metrics,
             demographics,
@@ -271,7 +271,7 @@ export function LockScreenView() {
       currentCondition,
       currentStage,
       demographics,
-      mTurkId,
+      prolificId,
       submitTelemetry,
     ]
   )
@@ -297,7 +297,7 @@ export function LockScreenView() {
         // the store mutates mid-render.
         const phaseReturnCount = currentPhaseReturnCount
         const submission = telemetry.recordSuccess({
-          mTurkId,
+          prolificId,
           currentCondition,
           currentStage,
           expectedPin: target,
@@ -347,7 +347,7 @@ export function LockScreenView() {
       currentPhaseReturnCount,
       currentStage,
       failedAttempts,
-      mTurkId,
+      prolificId,
       resolvedConfig,
       routeAfterAttempt,
       setTempTelemetry,
@@ -404,7 +404,7 @@ export function LockScreenView() {
     )
     const phaseReturnCount = currentPhaseReturnCount
     const submission = telemetry.recordSkip({
-      mTurkId,
+      prolificId,
       currentCondition,
       currentStage,
       expectedPin: target,
@@ -431,7 +431,7 @@ export function LockScreenView() {
     currentPhaseReturnCount,
     currentStage,
     failedAttempts,
-    mTurkId,
+    prolificId,
     pinAccepted,
     resolvedConfig,
     routeAfterAttempt,

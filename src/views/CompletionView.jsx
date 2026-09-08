@@ -56,7 +56,7 @@ export function CompletionView() {
   const finalizeParticipant = useStudyStore((s) => s.finalizeParticipant)
   const setAttentionCheck = useStudyStore((s) => s.setAttentionCheck)
   const demographics = useStudyStore((s) => s.demographics)
-  const mTurkId = useStudyStore((s) => s.mTurkId)
+  const prolificId = useStudyStore((s) => s.prolificId)
 
   const referenceBirthYear = useMemo(
     () => extractBirthYear(demographics.birthDate),
@@ -66,7 +66,7 @@ export function CompletionView() {
   // 'verify' | 'submitting' | 'error' | 'success'
   const [status, setStatus] = useState('verify')
   const [verificationYear, setVerificationYear] = useState('')
-  const [completionCode, setCompletionCode] = useState('')
+  const [prolificCode, setProlificCode] = useState('')
   const [errorMessage, setErrorMessage] = useState(null)
   const [copied, setCopied] = useState(false)
   const copyResetTimer = useRef(null)
@@ -85,24 +85,24 @@ export function CompletionView() {
     setStatus('submitting')
     setErrorMessage(null)
     appendTelemetry('study_completed', {
-      mTurkId,
-      completionCode: code,
+      prolificId,
+      prolificCode: code,
       passedCheck,
       verificationYear: enteredYear,
     })
-    const res = await finalizeParticipant({ completionCode: code })
+    const res = await finalizeParticipant({ prolificCode: code })
     if (res.ok) {
       appendTelemetry('completion_code_persisted', {
-        mTurkId,
-        completionCode: code,
+        prolificId,
+        prolificCode: code,
         completedAt: res.completedAt,
       })
       setStatus('success')
       return
     }
     appendTelemetry('completion_code_persist_failed', {
-      mTurkId,
-      completionCode: code,
+      prolificId,
+      prolificCode: code,
       error: res.error,
     })
     setErrorMessage(
@@ -124,14 +124,14 @@ export function CompletionView() {
       passedCheck,
     })
     const code = generateCompletionCode()
-    setCompletionCode(code)
+    setProlificCode(code)
     void runFinalize(code, passedCheck, enteredYear)
   }
 
   const handleRetry = () => {
-    if (!completionCode) return
+    if (!prolificCode) return
     void runFinalize(
-      completionCode,
+      prolificCode,
       useStudyStore.getState().attentionCheck.passedCheck,
       useStudyStore.getState().attentionCheck.verificationYear
     )
@@ -140,10 +140,10 @@ export function CompletionView() {
   const handleCopy = async () => {
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(completionCode)
+        await navigator.clipboard.writeText(prolificCode)
       } else {
         const textarea = document.createElement('textarea')
-        textarea.value = completionCode
+        textarea.value = prolificCode
         textarea.setAttribute('readonly', '')
         textarea.style.position = 'absolute'
         textarea.style.left = '-9999px'
@@ -153,7 +153,7 @@ export function CompletionView() {
         document.body.removeChild(textarea)
       }
       setCopied(true)
-      appendTelemetry('completion_code_copied', { completionCode })
+      appendTelemetry('completion_code_copied', { prolificCode })
       if (copyResetTimer.current !== null) {
         window.clearTimeout(copyResetTimer.current)
       }
@@ -163,7 +163,7 @@ export function CompletionView() {
       }, 2000)
     } catch (err) {
       appendTelemetry('completion_code_copy_failed', {
-        completionCode,
+        prolificCode,
         error: err instanceof Error ? err.message : String(err),
       })
     }
@@ -180,7 +180,7 @@ export function CompletionView() {
             Final Verification
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Before we generate your MTurk completion code, please confirm one
+            Before we generate your Prolific completion code, please confirm one
             detail from earlier so we can verify your responses were entered
             attentively.
           </Typography>
@@ -260,7 +260,7 @@ export function CompletionView() {
           >
             <Stack spacing={1.5} sx={{ width: '100%' }}>
               <Typography variant="overline" color="text.secondary">
-                Your MTurk completion code
+                Your Prolific completion code
               </Typography>
               <Box
                 sx={{
@@ -279,7 +279,7 @@ export function CompletionView() {
                 <Typography
                   variant="h4"
                   component="p"
-                  aria-label="MTurk completion code"
+                  aria-label="Prolific completion code"
                   sx={{
                     fontFamily: 'monospace',
                     fontWeight: 'bold',
@@ -287,7 +287,7 @@ export function CompletionView() {
                     wordBreak: 'break-all',
                   }}
                 >
-                  {completionCode}
+                  {prolificCode}
                 </Typography>
                 <Tooltip title={copied ? 'Copied!' : 'Copy to clipboard'}>
                   <IconButton
@@ -304,8 +304,8 @@ export function CompletionView() {
           </Alert>
 
           <Typography variant="body1" sx={{ textAlign: 'center' }}>
-            Please copy this code and paste it back into Amazon MTurk to
-            receive your payment.
+            Please copy this exact code and paste it into the Prolific
+            submission page to receive your payment.
           </Typography>
 
           <Typography
@@ -313,8 +313,8 @@ export function CompletionView() {
             color="text.secondary"
             sx={{ textAlign: 'center' }}
           >
-            Do not close this window until you have submitted the code on
-            MTurk.
+            Do not close this window until you have submitted the code in
+            the Prolific window.
           </Typography>
         </Stack>
       )}

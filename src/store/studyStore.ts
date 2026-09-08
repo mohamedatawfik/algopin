@@ -77,7 +77,7 @@ import type { LockScreenMetrics } from '../hooks/useLockScreenTelemetry'
  *
  * Baseline skips TAM/SUS: `LockScreenView` POSTs lock-screen metrics
  * directly after BASELINE_TEST. For algorithmic conditions,
- * `SusSurveyView` merges `mTurkId` + `condition` into this accumulator,
+ * `SusSurveyView` merges `prolificId` + `condition` into this accumulator,
  * POSTs the combined payload to /api/telemetry, and only on a successful
  * write calls `clearTempTelemetry()`. The outer `Partial<>` exists so a
  * defensive `SusSurveyView` retry doesn't require a full
@@ -89,7 +89,7 @@ export type TempTelemetryPayload = Partial<LockScreenMetrics> & {
 }
 
 type StudyState = {
-  mTurkId: string
+  prolificId: string
   currentStage: StudyStage
   currentCondition: PinCondition
   basePin: string | null
@@ -146,7 +146,7 @@ type StudyState = {
   lastParticipantInitError: string | null
   lastFinalizeError: string | null
 
-  setMTurkId: (id: string) => void
+  setProlificId: (id: string) => void
   setStage: (stage: StudyStage) => void
   advanceStage: () => StudyStage | null
   setBasePin: (pin: string | null) => void
@@ -181,27 +181,27 @@ type StudyState = {
     complexity: AlgorithmComplexity
   ) => Promise<PredefinedAlgorithm[]>
   registerParticipant: (
-    mTurkId: string,
+    prolificId: string,
     basePin: string
   ) => Promise<void>
   submitTelemetry: (
     submission: TelemetrySubmission
   ) => Promise<{ ok: boolean; id?: string; error?: string }>
   /**
-   * POSTs the MTurk completion code (and, if a legacy caller still has
+   * POSTs the Prolific completion code (and, if a legacy caller still has
    * them, the Day-1 SUS answers) to /api/participant/finalize. On success
    * the `phase1FinalizedAt` timestamp is updated and any previous error
    * is cleared. Demographics and attention-check data are pulled from the
    * store automatically so callers don't have to thread them through.
    */
   finalizeParticipant: (args: {
-    completionCode: string
+    prolificCode: string
     susAnswers?: SusAnswers
     phase?: StudyPhase
   }) => Promise<{
     ok: boolean
     completedAt?: string
-    completionCode?: string
+    prolificCode?: string
     error?: string
   }>
 }
@@ -226,7 +226,7 @@ const initialConfigurations: Configurations = {
 }
 
 const initialState = {
-  mTurkId: '',
+  prolificId: '',
   currentStage: 'ONBOARDING' as StudyStage,
   currentCondition: 'Baseline' as PinCondition,
   basePin: null as string | null,
@@ -252,7 +252,7 @@ function makeId(): string {
 export const useStudyStore = create<StudyState>((set, get) => ({
   ...initialState,
 
-  setMTurkId: (id) => set({ mTurkId: id }),
+  setProlificId: (id) => set({ prolificId: id }),
 
   setStage: (stage) =>
     set({
@@ -344,11 +344,11 @@ export const useStudyStore = create<StudyState>((set, get) => ({
     return list
   },
 
-  registerParticipant: async (mTurkId, basePin) => {
+  registerParticipant: async (prolificId, basePin) => {
     try {
-      await initParticipant(mTurkId, basePin)
+      await initParticipant(prolificId, basePin)
       set({
-        mTurkId,
+        prolificId,
         basePin,
         lastParticipantInitError: null,
       })
@@ -374,20 +374,20 @@ export const useStudyStore = create<StudyState>((set, get) => ({
     }
   },
 
-  finalizeParticipant: async ({ completionCode, susAnswers, phase }) => {
+  finalizeParticipant: async ({ prolificCode, susAnswers, phase }) => {
     const effectivePhase: StudyPhase = phase ?? 'day1'
     if (susAnswers) set({ susAnswers })
-    const mTurkId = get().mTurkId
-    if (!mTurkId) {
-      const message = 'mTurkId is missing; cannot finalize participant'
+    const prolificId = get().prolificId
+    if (!prolificId) {
+      const message = 'prolificId is missing; cannot finalize participant'
       set({ lastFinalizeError: message })
       return { ok: false, error: message }
     }
     try {
       const { demographics, attentionCheck } = get()
       const res = await finalizeParticipantApi({
-        mTurkId,
-        completionCode,
+        prolificId,
+        prolificCode,
         ...(susAnswers ? { susAnswers } : {}),
         phase: effectivePhase,
         demographics,
@@ -401,7 +401,7 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       return {
         ok: true,
         completedAt: res.completedAt,
-        completionCode: res.completionCode,
+        prolificCode: res.prolificCode,
       }
     } catch (err) {
       const message = formatApiErrorMessage(

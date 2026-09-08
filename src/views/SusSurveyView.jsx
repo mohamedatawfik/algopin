@@ -50,7 +50,7 @@ function buildEmptyAnswers() {
 }
 
 export function SusSurveyView() {
-  const mTurkId = useStudyStore((s) => s.mTurkId)
+  const prolificId = useStudyStore((s) => s.prolificId)
   const currentStage = useStudyStore((s) => s.currentStage)
   const currentCondition = useStudyStore((s) => s.currentCondition)
   const tempTelemetry = useStudyStore((s) => s.tempTelemetry)
@@ -93,9 +93,9 @@ export function SusSurveyView() {
       )
       return
     }
-    if (!mTurkId) {
+    if (!prolificId) {
       setErrorMessage(
-        'Your MTurk Worker ID is missing; please reload the study from the original link.'
+        'Your Prolific ID is missing; please reload the study from the original link.'
       )
       return
     }
@@ -125,7 +125,7 @@ export function SusSurveyView() {
       sus,
     })
 
-    // 2) Build the wire payload and POST it. Identity fields (`mTurkId`,
+    // 2) Build the wire payload and POST it. Identity fields (`prolificId`,
     //    `condition`) come from the store; every other field —
     //    lock-screen metrics, `tam`, `sus` — is whatever has accumulated
     //    in `tempTelemetry` up to this point. On every SUS POST we also
@@ -133,7 +133,7 @@ export function SusSurveyView() {
     //    the DEMOGRAPHICS phase so per-condition analyses can join on it
     //    without a second lookup.
     const submission = {
-      mTurkId,
+      prolificId,
       condition: currentCondition,
       ...nextTemp,
       demographics,

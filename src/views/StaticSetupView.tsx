@@ -14,7 +14,7 @@ import { useStudyStore } from '../store/studyStore'
 
 export function StaticSetupView() {
   const {
-    mTurkId,
+    prolificId,
     basePin,
     setBasePin,
     appendTelemetry,
@@ -28,8 +28,8 @@ export function StaticSetupView() {
   const [backendWarning, setBackendWarning] = useState<string | null>(null)
 
   useEffect(() => {
-    appendTelemetry('static_setup_opened', { mTurkId })
-  }, [appendTelemetry, mTurkId])
+    appendTelemetry('static_setup_opened', { prolificId })
+  }, [appendTelemetry, prolificId])
 
   const handlePinChange = (raw: string) => {
     const digitsOnly = raw.replace(/\D/g, '').slice(0, 4)
@@ -46,12 +46,12 @@ export function StaticSetupView() {
     setBackendWarning(null)
     setSubmitting(true)
     setBasePin(pinValue)
-    appendTelemetry('static_setup_submit', { mTurkId })
+    appendTelemetry('static_setup_submit', { prolificId })
 
-    if (mTurkId) {
+    if (prolificId) {
       try {
-        await registerParticipant(mTurkId, pinValue)
-        appendTelemetry('participant_registered', { mTurkId })
+        await registerParticipant(prolificId, pinValue)
+        appendTelemetry('participant_registered', { prolificId })
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Backend save failed'
@@ -64,7 +64,7 @@ export function StaticSetupView() {
       }
     } else {
       setBackendWarning(
-        'No MTurk Worker ID is set. Skipping backend registration.'
+        'No Prolific ID is set. Skipping backend registration.'
       )
     }
 
@@ -73,7 +73,7 @@ export function StaticSetupView() {
   }
 
   const handleContinueOffline = () => {
-    appendTelemetry('static_setup_continue_offline', { mTurkId })
+    appendTelemetry('static_setup_continue_offline', { prolificId })
     advanceStage()
   }
 

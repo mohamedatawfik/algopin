@@ -13,21 +13,21 @@ import { useStudyStore } from '../store/studyStore'
 
 export function OnboardingView() {
   const {
-    mTurkId,
-    setMTurkId,
+    prolificId,
+    setProlificId,
     consentAccepted,
     setConsentAccepted,
     appendTelemetry,
     advanceStage,
   } = useStudyStore()
 
-  const [localId, setLocalId] = useState(mTurkId)
+  const [localId, setLocalId] = useState(prolificId)
   const [error, setError] = useState<string | null>(null)
 
   const handleContinue = () => {
     const trimmed = localId.trim()
     if (!trimmed) {
-      setError('Please enter your Amazon Mechanical Turk Worker ID.')
+      setError('Please enter your Prolific ID.')
       return
     }
     if (!consentAccepted) {
@@ -35,8 +35,8 @@ export function OnboardingView() {
       return
     }
     setError(null)
-    setMTurkId(trimmed)
-    appendTelemetry('onboarding_complete', { mTurkId: trimmed })
+    setProlificId(trimmed)
+    appendTelemetry('onboarding_complete', { prolificId: trimmed })
     advanceStage()
   }
 
@@ -47,10 +47,11 @@ export function OnboardingView() {
       </Typography>
       <Typography variant="body2" color="text.secondary">
         This task is part of a research study on PIN authentication. Enter your
-        MTurk Worker ID exactly as it appears on your dashboard.
+        Prolific ID exactly as it appears on your dashboard.
       </Typography>
       <TextField
-        label="Worker ID"
+        label="Prolific ID"
+        placeholder="Prolific ID"
         value={localId}
         onChange={(e) => setLocalId(e.target.value)}
         fullWidth

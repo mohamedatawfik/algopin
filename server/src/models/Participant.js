@@ -8,12 +8,12 @@ export const SUS_MIN = 1
 export const SUS_MAX = 5
 
 /**
- * Canonical shape of the MTurk completion code the participant sees on
- * the terminal `CompletionView` and pastes into the HIT page:
- * `ALGOPIN-MTA-XXXXXX`, where XXXXXX is 6 uppercase alphanumeric chars.
+ * Canonical shape of the Prolific completion code the participant sees on
+ * the terminal `CompletionView` and pastes into the Prolific submission
+ * page: `ALGO-PRO-XXXXXX`, where XXXXXX is 6 uppercase alphanumeric chars.
  * Kept in sync with `src/lib/completionCode.ts` on the frontend.
  */
-export const COMPLETION_CODE_REGEX = /^ALGOPIN-MTA-[A-Z0-9]{6}$/
+export const COMPLETION_CODE_REGEX = /^ALGO-PRO-[A-Z0-9]{6}$/
 
 /**
  * Length of the tech-affinity questionnaire administered in the
@@ -64,7 +64,7 @@ const phaseFinalizeSchema = new Schema(
      * Optional per-phase SUS answers. Legacy Day-1 flows persisted the
      * full 10-item SUS here; the current per-condition SUS lives on
      * `TelemetryLog`, so `finalize.day1` can now be written with just a
-     * `completionCode`. Kept optional so both call paths validate.
+     * `prolificCode`. Kept optional so both call paths validate.
      */
     susAnswers: {
       type: [Number],
@@ -89,7 +89,7 @@ const phaseFinalizeSchema = new Schema(
 
 const participantSchema = new Schema(
   {
-    mTurkId: {
+    prolificId: {
       type: String,
       required: true,
       unique: true,
@@ -102,17 +102,17 @@ const participantSchema = new Schema(
       match: [/^\d{4,8}$/, 'basePin must be 4-8 digits'],
     },
     /**
-     * MTurk completion code shown on the terminal `CompletionView` and
-     * pasted by the participant into the HIT page for payment. Persisted
-     * server-side so we can cross-reference the MTurk submission against
-     * the study database.
+     * Prolific completion code shown on the terminal `CompletionView` and
+     * pasted by the participant into the Prolific submission page for
+     * payment. Persisted server-side so we can cross-reference the
+     * Prolific submission against the study database.
      */
-    completionCode: {
+    prolificCode: {
       type: String,
       required: false,
       match: [
         COMPLETION_CODE_REGEX,
-        'completionCode must match ALGOPIN-MTA-XXXXXX (uppercase alphanumeric)',
+        'prolificCode must match ALGO-PRO-XXXXXX (uppercase alphanumeric)',
       ],
       index: true,
     },

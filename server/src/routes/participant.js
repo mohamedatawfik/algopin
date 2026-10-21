@@ -12,7 +12,7 @@ import Participant, {
 const router = Router()
 
 const PIN_REGEX = /^\d{4,8}$/
-const DEFAULT_FINALIZE_PHASE = 'day1'
+const DEFAULT_FINALIZE_PHASE = 'day7'
 
 /**
  * Normalize demographics-like sub-payloads to their canonical shape and
@@ -172,7 +172,7 @@ router.post('/finalize', async (req, res, next) => {
     if (!COMPLETION_CODE_REGEX.test(body.prolificCode)) {
       return res.status(400).json({
         error:
-          'prolificCode must match ALGO-PRO-XXXXXX (6 uppercase alphanumeric chars)',
+          'prolificCode must match ALGO-PH2-XXXXXX (6 uppercase alphanumeric chars)',
       })
     }
 

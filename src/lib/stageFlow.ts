@@ -1,114 +1,74 @@
 import type { PinCondition } from '../store/studyStore'
 
 export type StudyStage =
-  | 'ONBOARDING'
-  | 'DEMOGRAPHICS'
-  | 'STATIC_SETUP'
-  | 'BASELINE_TEST'
-  | 'ALGO_INTRO'
-  | 'LOW_SETUP'
+  | 'PHASE2_WELCOME'
+  | 'TRANSITION_LOW'
   | 'LOW_TEST'
-  | 'LOW_TAM'
-  | 'LOW_SUS'
-  | 'MED_SETUP'
+  | 'TRANSITION_MED'
   | 'MED_TEST'
-  | 'MED_TAM'
-  | 'MED_SUS'
-  | 'HIGH_SETUP'
+  | 'TRANSITION_HIGH'
   | 'HIGH_TEST'
-  | 'HIGH_TAM'
-  | 'HIGH_SUS'
   | 'COMPLETION'
 
 /**
- * Canonical study pipeline. Baseline skips TAM/SUS: BASELINE_TEST POSTs
- * lock-screen metrics and advances straight to ALGO_INTRO. Algorithmic
- * conditions (Low / Med / High) still run TEST -> TAM -> SUS; the SUS
- * submission POSTs the accumulated telemetry document for that condition.
- * DEMOGRAPHICS sits between ONBOARDING and STATIC_SETUP so the participant
- * self-reports background information before their PIN work begins.
- * ALGO_INTRO sits between BASELINE_TEST and LOW_SETUP so the participant
- * meets algorithmic PINs before the first algorithmic setup. The terminal
- * COMPLETION stage runs the final attention check inline (birth-year
- * verification) and posts the participant-level finalize payload.
+ * Phase 2 is the unannounced follow-up memory test. There is no setup,
+ * no training and no questionnaires: the participant re-enters their
+ * Prolific ID and base PIN, then has to recall each of the three rules
+ * from Phase 1 unaided. A named transition screen sits in front of each
+ * lock-screen test so the upcoming complexity is announced — without
+ * restating the rule itself. Every stage transition is forward-only.
  */
 export const STAGE_ORDER: readonly StudyStage[] = [
-  'ONBOARDING',
-  'DEMOGRAPHICS',
-  'STATIC_SETUP',
-  'BASELINE_TEST',
-  'ALGO_INTRO',
-  'LOW_SETUP',
+  'PHASE2_WELCOME',
+  'TRANSITION_LOW',
   'LOW_TEST',
-  'LOW_TAM',
-  'LOW_SUS',
-  'MED_SETUP',
+  'TRANSITION_MED',
   'MED_TEST',
-  'MED_TAM',
-  'MED_SUS',
-  'HIGH_SETUP',
+  'TRANSITION_HIGH',
   'HIGH_TEST',
-  'HIGH_TAM',
-  'HIGH_SUS',
   'COMPLETION',
 ] as const
 
 export const STAGE_ROUTES: Record<StudyStage, string> = {
-  ONBOARDING: '/',
-  DEMOGRAPHICS: '/demographics',
-  STATIC_SETUP: '/static-setup',
-  BASELINE_TEST: '/baseline-test',
-  ALGO_INTRO: '/algo-intro',
-  LOW_SETUP: '/low-setup',
+  PHASE2_WELCOME: '/',
+  TRANSITION_LOW: '/transition-low',
   LOW_TEST: '/low-test',
-  LOW_TAM: '/low-tam',
-  LOW_SUS: '/low-sus',
-  MED_SETUP: '/med-setup',
+  TRANSITION_MED: '/transition-med',
   MED_TEST: '/med-test',
-  MED_TAM: '/med-tam',
-  MED_SUS: '/med-sus',
-  HIGH_SETUP: '/high-setup',
+  TRANSITION_HIGH: '/transition-high',
   HIGH_TEST: '/high-test',
-  HIGH_TAM: '/high-tam',
-  HIGH_SUS: '/high-sus',
   COMPLETION: '/completion',
 }
 
-export type AlgorithmComplexity = Exclude<PinCondition, 'Baseline'>
+export type AlgorithmComplexity = PinCondition
+
+/** Key of the per-test result slot a condition writes into. */
+export type TestResultKey = 'lowTest' | 'mediumTest' | 'highTest'
 
 export function conditionForStage(stage: StudyStage): PinCondition | null {
   switch (stage) {
-    case 'BASELINE_TEST':
-      return 'Baseline'
+    case 'TRANSITION_LOW':
     case 'LOW_TEST':
-    case 'LOW_TAM':
-    case 'LOW_SUS':
       return 'Low'
+    case 'TRANSITION_MED':
     case 'MED_TEST':
-    case 'MED_TAM':
-    case 'MED_SUS':
       return 'Medium'
+    case 'TRANSITION_HIGH':
     case 'HIGH_TEST':
-    case 'HIGH_TAM':
-    case 'HIGH_SUS':
       return 'High'
     default:
       return null
   }
 }
 
-export function complexityForSetupStage(
-  stage: StudyStage
-): AlgorithmComplexity | null {
-  switch (stage) {
-    case 'LOW_SETUP':
-      return 'Low'
-    case 'MED_SETUP':
-      return 'Medium'
-    case 'HIGH_SETUP':
-      return 'High'
-    default:
-      return null
+export function resultKeyForCondition(condition: PinCondition): TestResultKey {
+  switch (condition) {
+    case 'Low':
+      return 'lowTest'
+    case 'Medium':
+      return 'mediumTest'
+    case 'High':
+      return 'highTest'
   }
 }
 
@@ -118,45 +78,33 @@ export function nextStage(stage: StudyStage): StudyStage | null {
   return STAGE_ORDER[idx + 1]
 }
 
-export function previousStage(stage: StudyStage): StudyStage | null {
-  const idx = STAGE_ORDER.indexOf(stage)
-  if (idx <= 0) return null
-  return STAGE_ORDER[idx - 1]
-}
-
 export function isTestStage(stage: StudyStage): boolean {
   return (
-    stage === 'BASELINE_TEST' ||
-    stage === 'LOW_TEST' ||
-    stage === 'MED_TEST' ||
-    stage === 'HIGH_TEST'
+    stage === 'LOW_TEST' || stage === 'MED_TEST' || stage === 'HIGH_TEST'
   )
 }
 
-export function isTamStage(stage: StudyStage): boolean {
+export function isTransitionStage(stage: StudyStage): boolean {
   return (
-    stage === 'LOW_TAM' || stage === 'MED_TAM' || stage === 'HIGH_TAM'
+    stage === 'TRANSITION_LOW' ||
+    stage === 'TRANSITION_MED' ||
+    stage === 'TRANSITION_HIGH'
   )
 }
 
 /**
- * True for the three algorithmic `*_SUS` stages. SUS submission is the
- * point where an algorithmic condition's accumulated telemetry is POSTed
- * and `tempTelemetry` is cleared. Combined with `BASELINE_TEST` (which
- * POSTs lock-screen metrics itself and skips surveys), this predicate is
- * what `advanceStage()` uses to decide when to reset per-phase counters
- * (e.g. `currentPhaseReturnCount`).
+ * Display title for a transition screen. Names the complexity only —
+ * never the mathematical rule — so Phase 2 still tests unaided recall.
  */
-export function isSusStage(stage: StudyStage): boolean {
-  return (
-    stage === 'LOW_SUS' || stage === 'MED_SUS' || stage === 'HIGH_SUS'
-  )
-}
-
-/**
- * True for stages that close a condition's telemetry document and should
- * reset per-phase counters when advancing past them.
- */
-export function isConditionClosingStage(stage: StudyStage): boolean {
-  return stage === 'BASELINE_TEST' || isSusStage(stage)
+export function complexityTaskTitle(stage: StudyStage): string | null {
+  switch (conditionForStage(stage)) {
+    case 'Low':
+      return 'Low Complexity Task'
+    case 'Medium':
+      return 'Medium Complexity Task'
+    case 'High':
+      return 'High Complexity Task'
+    default:
+      return null
+  }
 }

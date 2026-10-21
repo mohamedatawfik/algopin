@@ -16,46 +16,19 @@ import {
 } from '@mui/material'
 import { keyframes } from '@mui/system'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  LockScreenMetrics,
-  LockScreenSubmission,
-  useLockScreenTelemetry,
-} from '../hooks/useLockScreenTelemetry'
-import type { TelemetrySubmission } from '../lib/api'
-import {
-  calculateExpectedPin,
-  getCanonicalType,
-  ResolvedConfiguration,
-} from '../lib/pinComposer'
-import { AlgorithmComplexity, previousStage } from '../lib/stageFlow'
-import {
-  configKeyForComplexity,
-  useStudyStore,
-} from '../store/studyStore'
+import { useLockScreenTelemetry } from '../hooks/useLockScreenTelemetry'
+import { calculateExpectedPin, getCanonicalType } from '../lib/pinComposer'
+import { useStudyStore } from '../store/studyStore'
 
 const PHONE_MAX_WIDTH = 400
 const PHONE_MAX_HEIGHT = 850
 const SUCCESS_NAVIGATE_DELAY_MS = 900
 const SKIP_AFTER_FAILURES = 5
 
-function metricsFromSubmission(submission: LockScreenSubmission): LockScreenMetrics {
-  return {
-    renderTimestamp: submission.renderTimestamp,
-    timeToFirstTouch: submission.timeToFirstTouch,
-    totalAuthTime: submission.totalAuthTime,
-    errorCount: submission.errorCount,
-    returnCount: submission.returnCount,
-    submittedErrors: submission.submittedErrors,
-    keystrokeLog: submission.keystrokeLog,
-    skipped: submission.skipped,
-    success: submission.success,
-  }
-}
-
 type KeySpec =
   | { kind: 'digit'; value: string }
   | { kind: 'clear' }
-  | { kind: 'return' }
+  | { kind: 'spacer' }
 
 const KEYPAD: KeySpec[] = [
   { kind: 'digit', value: '1' },
@@ -67,7 +40,7 @@ const KEYPAD: KeySpec[] = [
   { kind: 'digit', value: '7' },
   { kind: 'digit', value: '8' },
   { kind: 'digit', value: '9' },
-  { kind: 'return' },
+  { kind: 'spacer' },
   { kind: 'digit', value: '0' },
   { kind: 'clear' },
 ]
@@ -107,22 +80,32 @@ function randomInRange(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
+/**
+ * The Phase 2 recall test. Rendered three times — once per complexity
+ * (LOW_TEST, MED_TEST, HIGH_TEST), each preceded by a named transition
+ * screen — with the rule for the
+ * current stage applied to the trailing digit of the participant's base
+ * PIN.
+ *
+ * The screen deliberately shows no rule text, no worked example and no
+ * reminder of which complexity is being tested: recalling the rule from
+ * the first session unaided is exactly what we are measuring. The only
+ * affordances are the clock and battery readout in the phone chrome,
+ * which are the rules' inputs, and the failsafe that appears after
+ * `SKIP_AFTER_FAILURES` incorrect attempts.
+ *
+ * Results are held in the store and POSTed once from `CompletionView`;
+ * this view never talks to the network.
+ */
 export function LockScreenView() {
   const {
     basePin: storedBasePin,
     currentCondition,
     currentStage,
     prolificId,
-    configurations,
     appendTelemetry,
     advanceStage,
-    setStage,
-    setTempTelemetry,
-    clearTempTelemetry,
-    submitTelemetry,
-    demographics,
-    currentPhaseReturnCount,
-    incrementCurrentPhaseReturnCount,
+    recordTestResult,
   } = useStudyStore()
   const basePin = storedBasePin ?? ''
   const [now, setNow] = useState(() => new Date())
@@ -130,59 +113,54 @@ export function LockScreenView() {
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [shakeKey, setShakeKey] = useState(0)
   const [showSuccess, setShowSuccess] = useState(false)
-  const [telemetryError, setTelemetryError] = useState<string | null>(null)
-  const [savingTelemetry, setSavingTelemetry] = useState(false)
-  /** True once the PIN matched; keeps "Incorrect passcode" hidden if save fails. */
+  /** True once the PIN matched. */
   const [pinAccepted, setPinAccepted] = useState(false)
   /** True once the participant used the 5-failure skip failsafe. */
   const [skipping, setSkipping] = useState(false)
-  const [canRetryBaseline, setCanRetryBaseline] = useState(false)
 
   const successTimerRef = useRef<number | null>(null)
-  const pendingBaselineSubmissionRef = useRef<TelemetrySubmission | null>(null)
   const telemetry = useLockScreenTelemetry()
 
   const battery = useMemo(() => randomInRange(20, 90), [])
   const unreadCount = useMemo(() => randomInRange(1, 9), [])
 
-  const resolvedConfig: ResolvedConfiguration | null = useMemo(() => {
-    if (currentCondition === 'Baseline') return null
-    const complexity = currentCondition as AlgorithmComplexity
-    const config = configurations[configKeyForComplexity(complexity)]
-    // The rule type is strictly predefined by phase; we honor the value
-    // saved during setup but fall back to the canonical mapping if a
-    // session ever lands here without a stored configuration (e.g. dev
-    // navigation, restored session). The replaced digit is a global
-    // constant (`LOCKED_REPLACED_INDEX`) and is applied inside
-    // `calculateExpectedPin`, so it does not need to be tracked here.
-    const algorithmType = config?.algorithmType ?? getCanonicalType(complexity)
-    return { algorithmType }
-  }, [currentCondition, configurations])
+  // Phase 2 has no setup screen, so the rule is always the canonical one
+  // for the stage's complexity rather than something read back from a
+  // per-participant configuration.
+  const algorithmType = useMemo(
+    () => getCanonicalType(currentCondition),
+    [currentCondition]
+  )
 
   const expectedPin = useMemo(
     () =>
-      calculateExpectedPin(basePin, currentStage, resolvedConfig, {
+      calculateExpectedPin(basePin, currentStage, algorithmType, {
         date: now,
         batteryLevel: battery,
       }),
-    [basePin, currentStage, resolvedConfig, now, battery]
+    [basePin, currentStage, algorithmType, now, battery]
   )
 
   const expectedLength = expectedPin.length
 
   useEffect(() => {
     appendTelemetry('lock_screen_opened', {
+      stage: currentStage,
       condition: currentCondition,
       basePin,
-      // Ambient lock-screen state at open time. `unreadCount` is now
-      // purely decorative; `batteryLevel` is what the Medium and High
-      // rules evaluate against.
       unreadCount,
       batteryLevel: battery,
     })
     const t = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(t)
-  }, [appendTelemetry, basePin, currentCondition, unreadCount, battery])
+  }, [
+    appendTelemetry,
+    basePin,
+    currentCondition,
+    currentStage,
+    unreadCount,
+    battery,
+  ])
 
   useEffect(() => {
     return () => {
@@ -192,98 +170,12 @@ export function LockScreenView() {
     }
   }, [])
 
-  /**
-   * Shared post-attempt routing used by both a matching PIN and the
-   * skip failsafe. Algorithmic `*_TEST` stages advance into the matching
-   * questionnaire (`LOW_TEST` → `LOW_TAM`, etc. via STAGE_ORDER).
-   * Baseline POSTs lock-screen metrics immediately, then goes to
-   * ALGO_INTRO. Round-2 tests, if added later, follow the same
-   * `advanceStage()` successor as a successful unlock.
-   */
-  const routeAfterAttempt = useCallback(
-    (
-      metrics: LockScreenMetrics,
-      { announceUnlock }: { announceUnlock: boolean }
-    ) => {
-      if (currentStage === 'BASELINE_TEST') {
-        // Baseline skips surveys: POST metrics now, then go to ALGO_INTRO.
-        void (async () => {
-          if (!prolificId) {
-            if (announceUnlock) setShowSuccess(false)
-            setTelemetryError(
-              'Your Prolific ID is missing; please reload the study from the original link.'
-            )
-            return
-          }
-          const baselineSubmission: TelemetrySubmission = {
-            prolificId,
-            condition: currentCondition,
-            ...metrics,
-            demographics,
-          }
-          pendingBaselineSubmissionRef.current = baselineSubmission
-          setCanRetryBaseline(true)
-          setSavingTelemetry(true)
-          const res = await submitTelemetry(baselineSubmission)
-          setSavingTelemetry(false)
-          if (!res.ok) {
-            appendTelemetry('telemetry_post_failed', {
-              stage: currentStage,
-              condition: currentCondition,
-              error: res.error,
-            })
-            if (announceUnlock) setShowSuccess(false)
-            setTelemetryError(
-              res.error ?? 'Could not save your responses. Please try again.'
-            )
-            return
-          }
-          pendingBaselineSubmissionRef.current = null
-          setCanRetryBaseline(false)
-          appendTelemetry('telemetry_post_ok', {
-            stage: currentStage,
-            condition: currentCondition,
-            id: res.id,
-          })
-          clearTempTelemetry()
-          if (announceUnlock) setShowSuccess(true)
-          successTimerRef.current = window.setTimeout(() => {
-            window.scrollTo(0, 0)
-            advanceStage()
-          }, SUCCESS_NAVIGATE_DELAY_MS)
-        })()
-      } else {
-        successTimerRef.current = window.setTimeout(() => {
-          // STAGE_ORDER pairs every algorithmic *_TEST with its *_TAM
-          // successor (e.g. LOW_TEST -> LOW_TAM). The TAM view then
-          // advances to *_SUS, which POSTs telemetry. A skip of a
-          // round-2 test would likewise follow whatever successor
-          // STAGE_ORDER defines (e.g. LOW_TEST_2 -> MED_TEST_2).
-          window.scrollTo(0, 0)
-          advanceStage()
-        }, SUCCESS_NAVIGATE_DELAY_MS)
-      }
-    },
-    [
-      advanceStage,
-      appendTelemetry,
-      clearTempTelemetry,
-      currentCondition,
-      currentStage,
-      demographics,
-      prolificId,
-      submitTelemetry,
-    ]
-  )
-
   const validate = useCallback(
     (attempt: string) => {
-      const target = calculateExpectedPin(
-        basePin,
-        currentStage,
-        resolvedConfig,
-        { date: new Date(), batteryLevel: battery }
-      )
+      const target = calculateExpectedPin(basePin, currentStage, algorithmType, {
+        date: new Date(),
+        batteryLevel: battery,
+      })
       const ok = attempt === target
       appendTelemetry('pin_attempt', {
         correct: ok,
@@ -292,35 +184,24 @@ export function LockScreenView() {
         condition: currentCondition,
       })
       if (ok) {
-        // Snapshot the live store value so the count we persist matches
-        // the count we later ship on the /api/telemetry payload, even if
-        // the store mutates mid-render.
-        const phaseReturnCount = currentPhaseReturnCount
-        const submission = telemetry.recordSuccess({
+        const metrics = telemetry.recordSuccess({
           prolificId,
           currentCondition,
           currentStage,
           expectedPin: target,
-          returnCount: phaseReturnCount,
         })
         appendTelemetry('pin_success', {
-          errorCount: submission.errorCount,
-          returnCount: submission.returnCount,
-          totalAuthTime: submission.totalAuthTime,
-          timeToFirstTouch: submission.timeToFirstTouch,
-          skipped: submission.skipped,
-          success: submission.success,
+          errorCount: metrics.errorCount,
+          totalAuthTime: metrics.totalAuthTime,
+          timeToFirstTouch: metrics.timeToFirstTouch,
         })
-        // Compile lock-screen performance metrics. Baseline POSTs these
-        // immediately (no TAM/SUS). Algorithmic conditions stash them in
-        // tempTelemetry; TamSurveyView appends `tam`, and SusSurveyView
-        // appends `sus` + identity before POSTing.
-        const metrics = metricsFromSubmission(submission)
-        setTempTelemetry(metrics)
-        setTelemetryError(null)
+        recordTestResult(currentCondition, metrics)
         setPinAccepted(true)
         setShowSuccess(true)
-        routeAfterAttempt(metrics, { announceUnlock: true })
+        successTimerRef.current = window.setTimeout(() => {
+          window.scrollTo(0, 0)
+          advanceStage()
+        }, SUCCESS_NAVIGATE_DELAY_MS)
       } else {
         const nextErrors = failedAttempts + 1
         setFailedAttempts(nextErrors)
@@ -340,109 +221,62 @@ export function LockScreenView() {
       }
     },
     [
+      advanceStage,
+      algorithmType,
       appendTelemetry,
       basePin,
       battery,
       currentCondition,
-      currentPhaseReturnCount,
       currentStage,
       failedAttempts,
       prolificId,
-      resolvedConfig,
-      routeAfterAttempt,
-      setTempTelemetry,
+      recordTestResult,
       telemetry,
     ]
   )
 
-  const retryBaselineTelemetry = async () => {
-    const pending = pendingBaselineSubmissionRef.current
-    if (!pending || savingTelemetry) return
-    setTelemetryError(null)
-    setSavingTelemetry(true)
-    if (pinAccepted) setShowSuccess(true)
-    const res = await submitTelemetry(pending)
-    setSavingTelemetry(false)
-    if (!res.ok) {
-      appendTelemetry('telemetry_post_failed', {
-        stage: currentStage,
-        condition: currentCondition,
-        error: res.error,
-        retry: true,
-      })
-      setShowSuccess(false)
-      setTelemetryError(
-        res.error ?? 'Could not save your responses. Please try again.'
-      )
-      return
-    }
-    pendingBaselineSubmissionRef.current = null
-    setCanRetryBaseline(false)
-    appendTelemetry('telemetry_post_ok', {
-      stage: currentStage,
-      condition: currentCondition,
-      id: res.id,
-      retry: true,
-    })
-    clearTempTelemetry()
-    if (pinAccepted) setShowSuccess(true)
-    successTimerRef.current = window.setTimeout(() => {
-      window.scrollTo(0, 0)
-      advanceStage()
-    }, SUCCESS_NAVIGATE_DELAY_MS)
-  }
-
   const handleSkip = useCallback(() => {
-    if (showSuccess || pinAccepted || savingTelemetry || skipping) return
+    if (showSuccess || pinAccepted || skipping) return
     if (failedAttempts < SKIP_AFTER_FAILURES) return
 
-    const target = calculateExpectedPin(
-      basePin,
-      currentStage,
-      resolvedConfig,
-      { date: new Date(), batteryLevel: battery }
-    )
-    const phaseReturnCount = currentPhaseReturnCount
-    const submission = telemetry.recordSkip({
+    const target = calculateExpectedPin(basePin, currentStage, algorithmType, {
+      date: new Date(),
+      batteryLevel: battery,
+    })
+    const metrics = telemetry.recordSkip({
       prolificId,
       currentCondition,
       currentStage,
       expectedPin: target,
-      returnCount: phaseReturnCount,
     })
     appendTelemetry('pin_skipped', {
-      errorCount: submission.errorCount,
-      returnCount: submission.returnCount,
-      totalAuthTime: submission.totalAuthTime,
-      skipped: true,
-      success: false,
+      errorCount: metrics.errorCount,
+      totalAuthTime: metrics.totalAuthTime,
     })
-    const metrics = metricsFromSubmission(submission)
-    setTempTelemetry(metrics)
-    setTelemetryError(null)
+    recordTestResult(currentCondition, metrics)
     setSkipping(true)
-    window.scrollTo(0, 0)
-    routeAfterAttempt(metrics, { announceUnlock: false })
+    successTimerRef.current = window.setTimeout(() => {
+      window.scrollTo(0, 0)
+      advanceStage()
+    }, SUCCESS_NAVIGATE_DELAY_MS)
   }, [
+    advanceStage,
+    algorithmType,
     appendTelemetry,
     basePin,
     battery,
     currentCondition,
-    currentPhaseReturnCount,
     currentStage,
     failedAttempts,
-    prolificId,
     pinAccepted,
-    resolvedConfig,
-    routeAfterAttempt,
-    savingTelemetry,
-    setTempTelemetry,
+    prolificId,
+    recordTestResult,
     showSuccess,
     skipping,
     telemetry,
   ])
 
-  const inputLocked = showSuccess || pinAccepted || savingTelemetry || skipping
+  const inputLocked = showSuccess || pinAccepted || skipping
 
   const onDigit = (digit: string) => {
     if (inputLocked) return
@@ -462,35 +296,6 @@ export function LockScreenView() {
     setEntered('')
     telemetry.recordKey('CLEAR', 'clear')
     appendTelemetry('pin_key', { key: 'clear' })
-  }
-
-  const handleReturn = () => {
-    if (inputLocked) return
-    // Fail-safe escape hatch: send the participant back to the matching
-    // setup stage (e.g. LOW_TEST -> LOW_SETUP) so they can re-read the rule
-    // they just learned without being forced to guess attempts. The lock
-    // screen unmounts on stage change, so any in-progress entry and the
-    // hook-internal keystroke buffer are discarded automatically.
-    const target = previousStage(currentStage)
-    telemetry.recordKey('RETURN', 'return')
-    // Bump the per-phase Return counter *before* navigating: this is the
-    // working-memory-failure signal we report alongside the lock-screen
-    // metrics, and we want the post-increment value to be visible in the
-    // appended telemetry entry below for live-debugging.
-    incrementCurrentPhaseReturnCount()
-    const nextReturnCount = currentPhaseReturnCount + 1
-    appendTelemetry('pin_return', {
-      from: currentStage,
-      to: target,
-      condition: currentCondition,
-      enteredLength: entered.length,
-      errorCount: failedAttempts,
-      currentPhaseReturnCount: nextReturnCount,
-    })
-    setEntered('')
-    if (target) {
-      setStage(target)
-    }
   }
 
   return (
@@ -663,8 +468,7 @@ export function LockScreenView() {
           <Box
             key={`shake-${shakeKey}`}
             sx={{
-              animation:
-                shakeKey > 0 ? `${shakeAnim} 420ms ease` : 'none',
+              animation: shakeKey > 0 ? `${shakeAnim} 420ms ease` : 'none',
             }}
           >
             <PinIndicators length={expectedLength} filled={entered.length} />
@@ -682,20 +486,6 @@ export function LockScreenView() {
               {failedAttempts === 1 ? 'try' : 'tries'}
             </Typography>
           )}
-          {pinAccepted && telemetryError && (
-            <Typography
-              sx={{
-                mt: 0.5,
-                fontSize: 11,
-                color: '#ffb74d',
-                letterSpacing: 0.5,
-                textAlign: 'center',
-                px: 2,
-              }}
-            >
-              Passcode accepted — saving failed. Tap Retry below.
-            </Typography>
-          )}
         </Stack>
 
         <Box
@@ -710,15 +500,10 @@ export function LockScreenView() {
           }}
         >
           {KEYPAD.map((key, idx) => {
-            if (key.kind === 'return') {
-              return (
-                <ActionButton
-                  key="return"
-                  label="Return"
-                  onClick={handleReturn}
-                  disabled={inputLocked}
-                />
-              )
+            if (key.kind === 'spacer') {
+              // Phase 2 has nothing to return to, so the bottom-left slot
+              // stays empty rather than offering a dead control.
+              return <Box key="spacer" />
             }
             if (key.kind === 'clear') {
               return (
@@ -754,8 +539,8 @@ export function LockScreenView() {
                 color="error"
                 sx={{ textAlign: 'center' }}
               >
-                You have entered an incorrect PIN 5 times. You may skip to
-                the questionnaires if you are unable to calculate the PIN.
+                You have entered an incorrect PIN 5 times. You may skip ahead if
+                you are unable to recall the PIN.
               </Typography>
               <Button
                 variant="text"
@@ -770,7 +555,7 @@ export function LockScreenView() {
       </Paper>
 
       <Snackbar
-        open={showSuccess && !telemetryError}
+        open={showSuccess}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         autoHideDuration={SUCCESS_NAVIGATE_DELAY_MS}
       >
@@ -780,40 +565,9 @@ export function LockScreenView() {
           icon={<LockRounded />}
           sx={{ borderRadius: 3, fontWeight: 600 }}
         >
-          {currentStage === 'BASELINE_TEST'
-            ? savingTelemetry
-              ? 'Unlocked — saving…'
-              : 'Unlocked — continuing'
-            : 'Unlocked — opening survey'}
-        </Alert>
-      </Snackbar>
-
-      <Snackbar
-        open={Boolean(telemetryError)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        onClose={() => setTelemetryError(null)}
-      >
-        <Alert
-          severity="error"
-          variant="filled"
-          onClose={() => setTelemetryError(null)}
-          action={
-            canRetryBaseline ? (
-              <Button
-                color="inherit"
-                size="small"
-                disabled={savingTelemetry}
-                onClick={() => {
-                  void retryBaselineTelemetry()
-                }}
-              >
-                {savingTelemetry ? 'Retrying…' : 'Retry'}
-              </Button>
-            ) : undefined
-          }
-          sx={{ borderRadius: 3 }}
-        >
-          {telemetryError}
+          {currentStage === 'HIGH_TEST'
+            ? 'Unlocked — finishing up'
+            : 'Unlocked — continuing'}
         </Alert>
       </Snackbar>
     </Box>

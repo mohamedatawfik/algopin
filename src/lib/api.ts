@@ -1,6 +1,5 @@
 import type { Keystroke } from '../hooks/useLockScreenTelemetry'
 import type { PinCondition } from '../store/studyStore'
-import type { AlgorithmComplexity } from './stageFlow'
 
 const DEFAULT_API_BASE = 'http://localhost:4000'
 
@@ -54,238 +53,55 @@ export function formatApiErrorMessage(err: unknown, fallback: string): string {
   return raw || fallback
 }
 
-export type PredefinedAlgorithm = {
-  algorithmId: string
-  complexity: AlgorithmComplexity
-  description: string
-  type: 'MINUTE_DIGIT' | 'MINUTE_PLUS_BATTERY' | 'MINUTE_PLUS_TRIPLE_BATTERY'
-  _id?: string
-  createdAt?: string
-  updatedAt?: string
+/**
+ * Lock-screen outcome for a single Phase 2 recall test, written by
+ * `LockScreenView` when the participant either unlocks or uses the
+ * 5-failure skip failsafe.
+ */
+export type Phase2TestResult = {
+  condition: PinCondition
+  expectedPin: string
+  expectedPinLength: number
+  renderTimestamp: number
+  firstTouchTimestamp: number | null
+  timeToFirstTouch: number | null
+  totalAuthTime: number
+  errorCount: number
+  submittedErrors: string[]
+  keystrokeLog: Keystroke[]
+  /** True when the participant used the skip failsafe instead of unlocking. */
+  skipped: boolean
+  /** True only when the entered PIN matched; always false on skip. */
+  success: boolean
+  completedAt: number
 }
 
-export type AlgorithmsResponse = {
-  complexity: AlgorithmComplexity
-  algorithms: PredefinedAlgorithm[]
+/**
+ * The Phase 2 payload POSTed from `CompletionView` to `/api/telemetry`.
+ * Nested test objects use the same metric fields as a Phase 1
+ * `telemetrylogs` document so the collections can be merged on column
+ * name. Demographics / TAM / SUS are omitted — they exist on the schema
+ * but are not collected in this session.
+ */
+export type Phase2Submission = {
+  prolificId: string
+  prolificCode: string
+  basePin: string
+  lowTest: Phase2TestResult | null
+  mediumTest: Phase2TestResult | null
+  highTest: Phase2TestResult | null
+}
+
+export type Phase2Response = {
+  ok: boolean
+  id: string
+  prolificCode: string
+  completedAt: string
 }
 
 export type ParticipantInitResponse = {
   created: boolean
-  participant: {
-    _id: string
-    prolificId: string
-    basePin: string
-    createdAt?: string
-  }
-}
-
-export type TelemetryPostResponse = {
-  id: string
-  createdAt?: string
-}
-
-/**
- * Number of items and 1..7 Likert bounds for the Technology-Acceptance-Model
- * questionnaire administered immediately after every `*_TEST` phase.
- */
-export const TAM_ITEM_COUNT = 5
-export const TAM_MIN_VALUE = 1
-export const TAM_MAX_VALUE = 7
-
-/**
- * Named-field 1..7 Likert answers to the five TAM items, in the order
- * rendered by `TamSurveyView`. Persisted verbatim on the `tam` subdoc of
- * a `telemetrylogs` document.
- */
-export type TamAnswers = {
-  item1: number
-  item2: number
-  item3: number
-  item4: number
-  item5: number
-}
-
-/**
- * Named-field 1..5 Likert answers to the ten per-condition SUS items, in
- * the order rendered by `SusSurveyView`. Persisted verbatim on the `sus`
- * subdoc of a `telemetrylogs` document. Distinct from the (now-legacy)
- * Day-1 end-of-study SUS `SusAnswers` array wired through
- * `finalizeParticipant`.
- */
-export type SusAnswersPerCondition = {
-  item1: number
-  item2: number
-  item3: number
-  item4: number
-  item5: number
-  item6: number
-  item7: number
-  item8: number
-  item9: number
-  item10: number
-}
-
-/**
- * The exact JSON body POSTed to /api/telemetry once a condition is fully
- * complete. For algorithmic conditions that is lock screen + TAM + SUS.
- * For Baseline it is lock-screen metrics only (no surveys). Identity
- * (`prolificId`, `condition`) comes from the store; lock-screen metrics were
- * written to `tempTelemetry` at unlock success. Algorithmic conditions
- * append `tam` via `TamSurveyView` and `sus` via `SusSurveyView` before
- * the POST; Baseline POSTs directly from `LockScreenView`.
- */
-export type TelemetrySubmission = {
-  prolificId: string
-  /**
-   * Optional Prolific completion code. Normally generated at the end of
-   * Phase 1 and persisted via `/api/participant/finalize`; included here
-   * when a telemetry POST also carries the code.
-   */
-  prolificCode?: string
-  condition: PinCondition
-  renderTimestamp: number
-  timeToFirstTouch: number | null
-  totalAuthTime: number
-  errorCount: number
-  /**
-   * Count of lock-screen "Return" presses accumulated across the current
-   * complexity phase, captured at unlock-success time. Persisted on the
-   * `TelemetryLog` document so we can analyse working-memory failures
-   * per condition.
-   */
-  returnCount: number
-  submittedErrors: string[]
-  keystrokeLog: Keystroke[]
-  /**
-   * True when the participant used the lock-screen skip failsafe after
-   * 5 incorrect PIN attempts instead of unlocking. Default false.
-   */
-  skipped?: boolean
-  /**
-   * True when the entered PIN matched. Explicitly false on skip so a
-   * skipped attempt is never counted as a successful unlock.
-   */
-  success?: boolean
-  /** Present for Low / Medium / High; omitted for Baseline. */
-  tam?: TamAnswers
-  /** Present for Low / Medium / High; omitted for Baseline. */
-  sus?: SusAnswersPerCondition
-  /**
-   * Optional participant-level blocks. Included by the frontend on the
-   * final per-condition telemetry POST so per-condition analyses can join
-   * without a second lookup; the same values are also written to the
-   * Participant record via `/api/participant/finalize`.
-   */
-  demographics?: Demographics
-  attentionCheck?: AttentionCheck
-}
-
-/**
- * Number of items on the tech-affinity portion of the DEMOGRAPHICS phase.
- * Each answer is a numeric Likert-style response persisted verbatim as an
- * ordered array so item order is preserved for downstream analysis.
- */
-export const TECH_AFFINITY_ITEM_COUNT = 4
-
-/**
- * Self-reported demographics captured in the DEMOGRAPHICS phase, held
- * verbatim in the global store and shipped on the finalize POST (and, for
- * convenience, on the final telemetry POST too).
- */
-export type Demographics = {
-  birthDate: string
-  education: string
-  gender: string
-  country: string
-  passwordFrequency: string
-  techAffinity: number[]
-}
-
-export function emptyDemographics(): Demographics {
-  return {
-    birthDate: '',
-    education: '',
-    gender: '',
-    country: '',
-    passwordFrequency: '',
-    techAffinity: [],
-  }
-}
-
-/**
- * Attention-check probe captured inline at the top of `CompletionView`
- * (birth-year re-verification). Persisted on the Participant record via
- * the finalize POST (and mirrored onto the final telemetry POST when
- * convenient).
- */
-export type AttentionCheck = {
-  verificationYear: string
-  passedCheck: boolean
-}
-
-export function emptyAttentionCheck(): AttentionCheck {
-  return { verificationYear: '', passedCheck: false }
-}
-
-export type StudyPhase = 'day1' | 'day7'
-
-/**
- * Number of items on the standard System Usability Scale (Brooke, 1996).
- * Each answer is an integer 1..5 (Strongly Disagree .. Strongly Agree).
- */
-export const SUS_ITEM_COUNT = 10
-export const SUS_MIN_VALUE = 1
-export const SUS_MAX_VALUE = 5
-
-export type SusAnswers = number[]
-
-export type FinalizeSubmission = {
-  prolificId: string
-  /**
-   * Prolific completion code shown to the participant on the terminal
-   * `CompletionView` (format: `ALGO-PRO-XXXXXX`). Required — the
-   * backend rejects the submission without it so we can cross-reference
-   * the paste on the Prolific submission page against the study database.
-   */
-  prolificCode: string
-  /**
-   * Legacy Day-1 SUS payload. The current study collects SUS
-   * per-condition via `/api/telemetry`, so this is optional and normally
-   * omitted from the finalize call.
-   */
-  susAnswers?: SusAnswers
-  phase?: StudyPhase
-  /**
-   * Participant-level demographics captured in the DEMOGRAPHICS phase.
-   * Optional so callers that don't have the data (e.g. legacy flows) can
-   * still finalize.
-   */
-  demographics?: Demographics
-  /**
-   * Attention-check probe captured inline at the top of `CompletionView`.
-   * Optional for the same reason as `demographics`.
-   */
-  attentionCheck?: AttentionCheck
-}
-
-export type FinalizeResponse = {
-  ok: boolean
-  phase: StudyPhase
-  completedAt: string
-  prolificCode: string
-  participant: {
-    _id: string
-    prolificId: string
-    basePin: string
-    prolificCode?: string
-    demographics?: Demographics
-    attentionCheck?: AttentionCheck
-    finalize?: {
-      day1?: { susAnswers?: number[]; completedAt: string }
-      day7?: { susAnswers?: number[]; completedAt: string }
-    }
-    createdAt?: string
-  }
+  participant: unknown
 }
 
 export class ApiError extends Error {
@@ -300,10 +116,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  init: RequestInit = {}
-): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('Content-Type')) {
@@ -330,15 +143,6 @@ async function request<T>(
   return body as T
 }
 
-export async function fetchAlgorithms(
-  complexity: AlgorithmComplexity
-): Promise<PredefinedAlgorithm[]> {
-  const data = await request<AlgorithmsResponse>(
-    `/api/algorithms/${encodeURIComponent(complexity)}`
-  )
-  return data.algorithms
-}
-
 export async function initParticipant(
   prolificId: string,
   basePin: string
@@ -350,18 +154,9 @@ export async function initParticipant(
 }
 
 export async function postTelemetry(
-  submission: TelemetrySubmission
-): Promise<TelemetryPostResponse> {
-  return request<TelemetryPostResponse>('/api/telemetry', {
-    method: 'POST',
-    body: JSON.stringify(submission),
-  })
-}
-
-export async function finalizeParticipant(
-  submission: FinalizeSubmission
-): Promise<FinalizeResponse> {
-  return request<FinalizeResponse>('/api/participant/finalize', {
+  submission: Phase2Submission
+): Promise<Phase2Response> {
+  return request<Phase2Response>('/api/telemetry', {
     method: 'POST',
     body: JSON.stringify(submission),
   })

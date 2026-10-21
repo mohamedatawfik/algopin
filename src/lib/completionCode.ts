@@ -2,21 +2,21 @@
  * Prolific completion-code helpers.
  *
  * The completion code is the token the participant pastes into the Prolific
- * submission page to prove they finished Phase 1. It is generated once on the
- * client (in `CompletionView`), POSTed to /api/participant/finalize so we
- * can cross-reference the paste against the study database, and displayed
+ * submission page to prove they finished Phase 2. It is generated once on the
+ * client (in `CompletionView`), POSTed to /api/telemetry so we can
+ * cross-reference the paste against the study database, and displayed
  * verbatim to the participant.
  *
- * Format: `ALGO-PRO-XXXXXX`, where `XXXXXX` is a 6-character random
+ * Format: `ALGO-PH2-XXXXXX`, where `XXXXXX` is a 6-character random
  * suffix drawn uniformly from `A-Z` and `0-9`. `COMPLETION_CODE_REGEX`
  * is the authoritative shape check reused by the frontend and the API
  * validator.
  */
 
-export const COMPLETION_CODE_PREFIX = 'ALGO-PRO-'
+export const COMPLETION_CODE_PREFIX = 'ALGO-PH2-'
 export const COMPLETION_CODE_SUFFIX_LENGTH = 6
 export const COMPLETION_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-export const COMPLETION_CODE_REGEX = /^ALGO-PRO-[A-Z0-9]{6}$/
+export const COMPLETION_CODE_REGEX = /^ALGO-PH2-[A-Z0-9]{6}$/
 
 function pickRandomChar(alphabet: string): string {
   // Prefer the Web Crypto RNG when available so codes generated in
@@ -37,7 +37,7 @@ function pickRandomChar(alphabet: string): string {
 
 /**
  * Generate a fresh Prolific completion code in the canonical
- * `ALGO-PRO-XXXXXX` format. Each call returns an independent random
+ * `ALGO-PH2-XXXXXX` format. Each call returns an independent random
  * value.
  */
 export function generateCompletionCode(): string {

@@ -8,12 +8,12 @@ export const SUS_MIN = 1
 export const SUS_MAX = 5
 
 /**
- * Canonical shape of the Prolific completion code the participant sees on
- * the terminal `CompletionView` and pastes into the Prolific submission
- * page: `ALGO-PRO-XXXXXX`, where XXXXXX is 6 uppercase alphanumeric chars.
- * Kept in sync with `src/lib/completionCode.ts` on the frontend.
+ * Canonical shape of the Phase 2 Prolific completion code the participant
+ * sees on the terminal `CompletionView` and pastes into the Prolific
+ * submission page: `ALGO-PH2-XXXXXX`, where XXXXXX is 6 uppercase
+ * alphanumeric chars. Kept in sync with `src/lib/completionCode.ts`.
  */
-export const COMPLETION_CODE_REGEX = /^ALGO-PRO-[A-Z0-9]{6}$/
+export const COMPLETION_CODE_REGEX = /^ALGO-PH2-[A-Z0-9]{6}$/
 
 /**
  * Length of the tech-affinity questionnaire administered in the
@@ -112,7 +112,7 @@ const participantSchema = new Schema(
       required: false,
       match: [
         COMPLETION_CODE_REGEX,
-        'prolificCode must match ALGO-PRO-XXXXXX (uppercase alphanumeric)',
+        'prolificCode must match ALGO-PH2-XXXXXX (uppercase alphanumeric)',
       ],
       index: true,
     },

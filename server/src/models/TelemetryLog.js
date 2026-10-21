@@ -3,15 +3,23 @@ import mongoose from 'mongoose'
 const { Schema, model } = mongoose
 
 export const CONDITIONS = ['Baseline', 'Low', 'Medium', 'High']
+export const TEST_CONDITIONS = ['Low', 'Medium', 'High']
 export const STUDY_PHASES = ['day1', 'day7']
 export const KEY_KINDS = ['digit', 'clear', 'cancel', 'return']
 
 /**
+ * Canonical shape of the Phase 2 Prolific completion code. Kept in sync
+ * with `src/lib/completionCode.ts` and the `Participant` model.
+ */
+export const COMPLETION_CODE_REGEX = /^ALGO-PH2-[A-Z0-9]{6}$/
+
+export const BASE_PIN_REGEX = /^\d{4}$/
+
+/**
  * Technology-Acceptance-Model (TAM) items administered immediately after
- * each algorithmic `*_TEST` phase (Low / Medium / High). Baseline skips
- * TAM. Frontend renders 5 items on a 1..7 Likert scale; each is persisted
- * as a named integer field inside the `tam` subdoc so the survey structure
- * is self-describing in the DB.
+ * each algorithmic `*_TEST` phase in Phase 1. Phase 2 does not collect
+ * TAM, so the subdoc is optional — it stays on the schema so a Compass /
+ * CSV export of `telemetrylogs` has the same columns as Phase 1.
  */
 export const TAM_ITEM_COUNT = 5
 export const TAM_MIN = 1
@@ -19,10 +27,8 @@ export const TAM_MAX = 7
 export const TAM_FIELDS = ['item1', 'item2', 'item3', 'item4', 'item5']
 
 /**
- * System-Usability-Scale items administered per algorithmic condition,
- * right after the TAM survey. Baseline skips SUS. 10 canonical Brooke
- * items on a 1..5 Likert scale, each persisted as a named integer field
- * inside the `sus` subdoc.
+ * System-Usability-Scale items administered per algorithmic condition in
+ * Phase 1. Optional here for the same column-stability reason as TAM.
  */
 export const SUS_ITEM_COUNT = 10
 export const SUS_MIN = 1
@@ -40,20 +46,7 @@ export const SUS_FIELDS = [
   'item10',
 ]
 
-/**
- * Demographics self-reported by the participant in the DEMOGRAPHICS phase
- * (between ONBOARDING and STATIC_SETUP). `techAffinity` captures answers to
- * a 4-item tech-affinity questionnaire as an ordered array of numbers so
- * item order is preserved verbatim.
- */
 export const TECH_AFFINITY_ITEM_COUNT = 4
-
-/**
- * Attention-check probe captured inline at the top of the terminal
- * completion screen (birth-year re-verification). `verificationYear` is
- * the raw string typed by the participant; `passedCheck` is the boolean
- * the frontend derived by comparing it against the expected answer.
- */
 
 const keystrokeSchema = new Schema(
   {
@@ -67,11 +60,13 @@ const keystrokeSchema = new Schema(
 function makeLikertRating({ min, max }) {
   return {
     type: Number,
-    required: true,
+    // Phase 2 does not collect TAM/SUS. Nested items must stay optional so a
+    // document without those survey blocks still passes validation.
+    required: false,
     min,
     max,
     validate: {
-      validator: Number.isInteger,
+      validator: (v) => v == null || Number.isInteger(v),
       message: (props) => `${props.path} must be an integer`,
     },
   }
@@ -138,34 +133,16 @@ const attentionCheckSchema = new Schema(
   { _id: false }
 )
 
-const telemetryLogSchema = new Schema(
+/**
+ * Lock-screen metrics for one recall test. Field names and types match
+ * a Phase 1 per-condition `telemetrylogs` document so the nested
+ * `lowTest` / `mediumTest` / `highTest` objects flatten into the same
+ * analysis columns (timeToFirstTouch, totalAuthTime, errorCount,
+ * skipped, …).
+ */
+const testResultSchema = new Schema(
   {
-    prolificId: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
-    /**
-     * Optional Prolific completion code. Normally written on the
-     * Participant record at finalize time; accepted here when a
-     * telemetry POST also carries the code.
-     */
-    prolificCode: {
-      type: String,
-      required: false,
-      trim: true,
-    },
-    condition: {
-      type: String,
-      required: true,
-      enum: CONDITIONS,
-      index: true,
-    },
-    currentPhase: {
-      type: String,
-      enum: STUDY_PHASES,
-    },
+    condition: { type: String, enum: TEST_CONDITIONS, required: true },
     expectedPin: { type: String },
     expectedPinLength: { type: Number },
     renderTimestamp: { type: Number, required: true },
@@ -176,36 +153,66 @@ const telemetryLogSchema = new Schema(
     returnCount: { type: Number, default: 0 },
     submittedErrors: { type: [String], default: [] },
     keystrokeLog: { type: [keystrokeSchema], default: [] },
-    /**
-     * Lock-screen outcome flags. `skipped` is set when the participant
-     * used the 5-failure failsafe instead of unlocking. `success` is
-     * true only on a matching PIN; skip always persists success: false.
-     * Both apply to every lock-screen telemetry document (Baseline /
-     * Low / Medium / High, including any future round-2 tests).
-     */
     skipped: { type: Boolean, default: false },
-    success: { type: Boolean, default: true },
+    success: { type: Boolean, default: false },
+    completedAt: { type: Number },
+  },
+  { _id: false }
+)
+
+/**
+ * One document per Phase 2 participant in the same `telemetrylogs`
+ * collection Phase 1 uses. Root identity fields plus the three nested
+ * test objects; Phase 1 survey subdocs exist but are not required.
+ */
+const telemetryLogSchema = new Schema(
+  {
+    prolificId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    prolificCode: {
+      type: String,
+      required: false,
+      trim: true,
+      match: [
+        COMPLETION_CODE_REGEX,
+        'prolificCode must match ALGO-PH2-XXXXXX (uppercase alphanumeric)',
+      ],
+      index: true,
+    },
+    basePin: {
+      type: String,
+      required: true,
+      match: [BASE_PIN_REGEX, 'basePin must be exactly 4 digits'],
+    },
+    currentPhase: {
+      type: String,
+      enum: STUDY_PHASES,
+      default: 'day7',
+    },
+    lowTest: { type: testResultSchema, default: null },
+    mediumTest: { type: testResultSchema, default: null },
+    highTest: { type: testResultSchema, default: null },
     /**
-     * Per-phase survey subdocs. Required for Low / Medium / High (POSTed
-     * after *_SUS). Optional for Baseline, which records lock-screen
-     * metrics only and skips TAM/SUS.
+     * Phase 1 survey / follow-up subdocs. Not collected in Phase 2 — none
+     * of these are required. They stay on the schema so a Compass / CSV
+     * export of `telemetrylogs` has the same columns as Phase 1.
      */
-    tam: { type: tamSchema, required: false },
-    sus: { type: susSchema, required: false },
-    /**
-     * Participant-level demographics collected once in the DEMOGRAPHICS
-     * phase. Optional on any given telemetry doc because the same values
-     * are also written to the `Participant` record at finalize time; the
-     * subdoc is available on every telemetry POST so per-condition
-     * analyses can join without a second lookup.
-     */
-    demographics: { type: demographicsSchema, default: undefined },
-    /**
-     * Optional final-phase attention-check snapshot. Only populated on the
-     * last telemetry doc for a participant (or is written to the
-     * Participant record at finalize time).
-     */
-    attentionCheck: { type: attentionCheckSchema, default: undefined },
+    tam: { type: tamSchema, required: false, default: undefined },
+    tamSurveys: { type: Schema.Types.Mixed, required: false, default: undefined },
+    sus: { type: susSchema, required: false, default: undefined },
+    susSurveys: { type: Schema.Types.Mixed, required: false, default: undefined },
+    demographics: { type: demographicsSchema, required: false, default: undefined },
+    round2: { type: Schema.Types.Mixed, required: false, default: undefined },
+    attentionCheck: {
+      type: attentionCheckSchema,
+      required: false,
+      default: undefined,
+    },
     completedAt: { type: Number },
     schemaVersion: { type: Number },
   },

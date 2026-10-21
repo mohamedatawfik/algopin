@@ -1,8 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
-import type { StudyStage } from '../lib/stageFlow'
 import type { PinCondition } from '../store/studyStore'
 
-export type KeyEventKind = 'digit' | 'clear' | 'cancel' | 'return'
+export type KeyEventKind = 'digit' | 'clear' | 'cancel'
 
 export type Keystroke = {
   key: string
@@ -11,28 +10,24 @@ export type Keystroke = {
 }
 
 /**
- * The minimal lock-screen-side performance object captured at unlock-success
- * time. This is the base shape that gets stashed in
- * `studyStore.tempTelemetry`. For Baseline it is POSTed immediately from
- * `LockScreenView`. For algorithmic conditions the matching `*_TAM` and
- * `*_SUS` surveys append their `tam` and `sus` subdocs to the same slot;
- * the SUS view then merges in `prolificId` and `condition` before POSTing
- * the full payload to /api/telemetry.
+ * The lock-screen performance record captured when a Phase 2 recall test
+ * ends — either because the PIN matched or because the participant used
+ * the 5-failure skip failsafe. `LockScreenView` hands this to the store,
+ * which parks it in the matching `lowTest` / `mediumTest` / `highTest`
+ * slot. Nothing is POSTed until the terminal `CompletionView`.
+ *
+ * Structurally identical to `Phase2TestResult` in `lib/api.ts`, which is
+ * what ends up on the wire.
  */
 export type LockScreenMetrics = {
+  condition: PinCondition
+  expectedPin: string
+  expectedPinLength: number
   renderTimestamp: number
+  firstTouchTimestamp: number | null
   timeToFirstTouch: number | null
   totalAuthTime: number
   errorCount: number
-  /**
-   * Number of times the participant pressed the lock-screen "Return"
-   * button during the current complexity phase. Counted by the global
-   * store (`currentPhaseReturnCount`) and snapshotted into the metrics
-   * here at unlock-success time. Accumulates across SETUP ↔ TEST bounces
-   * within a single phase; the store resets it after BASELINE_TEST or
-   * the matching `*_SUS` survey (see `advanceStage` in `studyStore.ts`).
-   */
-  returnCount: number
   submittedErrors: string[]
   keystrokeLog: Keystroke[]
   /**
@@ -45,49 +40,35 @@ export type LockScreenMetrics = {
    * so a failed-and-skipped attempt is never counted as an unlock.
    */
   success: boolean
-}
-
-/**
- * The full localStorage-persisted snapshot of a successful unlock. It is a
- * superset of `LockScreenMetrics` and additionally records identity,
- * stage/condition context, and the resolved expected PIN for offline audits.
- */
-export type LockScreenSubmission = LockScreenMetrics & {
-  schemaVersion: 1
-  prolificId: string
-  currentCondition: PinCondition
-  currentStage: StudyStage
-  expectedPin: string
-  expectedPinLength: number
-  firstTouchTimestamp: number | null
   completedAt: number
 }
 
-export const LOCK_SCREEN_TELEMETRY_STORAGE_KEY = 'lockscreen_telemetry_v1'
-
-export type LockScreenSuccessMeta = {
+/**
+ * The full localStorage-persisted snapshot of a finished test. A superset
+ * of `LockScreenMetrics` that additionally records identity and stage for
+ * offline audits during pilot runs.
+ */
+export type LockScreenSubmission = LockScreenMetrics & {
+  schemaVersion: 2
   prolificId: string
-  currentCondition: PinCondition
-  currentStage: StudyStage
-  expectedPin: string
-  /**
-   * Snapshot of `currentPhaseReturnCount` from the global store taken at
-   * unlock-success time. Persisted alongside the rest of the metrics so an
-   * offline audit of localStorage carries the working-memory signal too.
-   */
-  returnCount: number
+  currentStage: string
 }
 
-export type LockScreenOutcome = {
-  skipped?: boolean
+export const LOCK_SCREEN_TELEMETRY_STORAGE_KEY = 'lockscreen_telemetry_v2'
+
+export type LockScreenOutcomeMeta = {
+  prolificId: string
+  currentCondition: PinCondition
+  currentStage: string
+  expectedPin: string
 }
 
 export type UseLockScreenTelemetryApi = {
   renderTimestamp: number
   recordKey: (key: string, kind: KeyEventKind) => void
   recordError: (submitted: string) => void
-  recordSuccess: (meta: LockScreenSuccessMeta) => LockScreenSubmission
-  recordSkip: (meta: LockScreenSuccessMeta) => LockScreenSubmission
+  recordSuccess: (meta: LockScreenOutcomeMeta) => LockScreenMetrics
+  recordSkip: (meta: LockScreenOutcomeMeta) => LockScreenMetrics
   reset: () => void
 }
 
@@ -115,18 +96,11 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
   }, [])
 
   const recordOutcome = useCallback(
-    (
-      meta: LockScreenSuccessMeta,
-      outcome: LockScreenOutcome = {}
-    ): LockScreenSubmission => {
-      const skipped = Boolean(outcome.skipped)
+    (meta: LockScreenOutcomeMeta, skipped: boolean): LockScreenMetrics => {
       const completedAt = Date.now()
       const firstTouch = firstTouchTimestampRef.current
-      const submission: LockScreenSubmission = {
-        schemaVersion: 1,
-        prolificId: meta.prolificId,
-        currentCondition: meta.currentCondition,
-        currentStage: meta.currentStage,
+      const metrics: LockScreenMetrics = {
+        condition: meta.currentCondition,
         expectedPin: meta.expectedPin,
         expectedPinLength: meta.expectedPin.length,
         renderTimestamp,
@@ -134,29 +108,33 @@ export function useLockScreenTelemetry(): UseLockScreenTelemetryApi {
         timeToFirstTouch:
           firstTouch !== null ? firstTouch - renderTimestamp : null,
         totalAuthTime: completedAt - renderTimestamp,
-        keystrokeLog: [...keystrokeLogRef.current],
         errorCount: errorCountRef.current,
-        returnCount: meta.returnCount,
         submittedErrors: [...submittedErrorsRef.current],
+        keystrokeLog: [...keystrokeLogRef.current],
         skipped,
         success: !skipped,
         completedAt,
       }
-      persistLockScreenSubmission(submission)
-      return submission
+      persistLockScreenSubmission({
+        ...metrics,
+        schemaVersion: 2,
+        prolificId: meta.prolificId,
+        currentStage: meta.currentStage,
+      })
+      return metrics
     },
     [renderTimestamp]
   )
 
   const recordSuccess = useCallback(
-    (meta: LockScreenSuccessMeta): LockScreenSubmission =>
-      recordOutcome(meta, { skipped: false }),
+    (meta: LockScreenOutcomeMeta): LockScreenMetrics =>
+      recordOutcome(meta, false),
     [recordOutcome]
   )
 
   const recordSkip = useCallback(
-    (meta: LockScreenSuccessMeta): LockScreenSubmission =>
-      recordOutcome(meta, { skipped: true }),
+    (meta: LockScreenOutcomeMeta): LockScreenMetrics =>
+      recordOutcome(meta, true),
     [recordOutcome]
   )
 
@@ -182,8 +160,6 @@ export function persistLockScreenSubmission(
   submission: LockScreenSubmission
 ): void {
   // Console.log so investigators can spot-check during pilot runs.
-  // Structured for direct ingestion by a future POST endpoint.
-  // eslint-disable-next-line no-console
   console.log('[LockScreenTelemetry]', submission)
 
   if (typeof window === 'undefined') return
@@ -196,7 +172,6 @@ export function persistLockScreenSubmission(
       JSON.stringify(list)
     )
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn('[LockScreenTelemetry] failed to persist submission', err)
   }
 }
